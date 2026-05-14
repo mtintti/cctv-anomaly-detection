@@ -1,0 +1,57 @@
+{
+  "version" : 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "simple": {
+      "format": "[%(levelname)s|%(module)s|%(lineno)d] %(asctime)s: %(message)s",
+      "datefmt": "%Y-%m-%dT%H:%M:%S%z"
+    },
+    "json": {
+      "()": "backend.app.logger.JSONFormatter",
+      "fmt_keys": {
+        "level": "levelname",
+        "message": "message",
+        "timestamp": "timestamp",
+        "logger": "name",
+        "module": "funcName",
+        "line": "lineno",
+        "thread_name": "threadName"
+      }
+    }
+  },
+  "handlers": {
+    "stdout": {
+      "class" : "logging.StreamHandler",
+      "formatter": "simple",
+      "stream": "ext://sys.stdout",
+      "filters": ["warnings_and_below"]
+    },
+    "file": {
+      "class": "logging.handlers.RotatingFileHandler",
+      "level": "DEBUG",
+      "formatter": "json",
+      "filename": "logging_configs/logs/cctv-detection.log.jsonl",
+      "maxBytes": 10000,
+      "backupCount": 3,
+      "filters": ["Error_and_Critical"]
+    }
+  },
+  "filters": {
+    "warnings_and_below": {
+      "()": "backend.app.logger.Filter"
+    },
+    "Error_and_Critical": {
+      "()": "backend.app.logger.FilterErr"
+    }
+  },
+  "root": {
+      "level": "DEBUG",
+      "handlers":[
+        "stdout",
+        "file"
+        ]
+    },
+  "loggers": {
+
+  }
+}
