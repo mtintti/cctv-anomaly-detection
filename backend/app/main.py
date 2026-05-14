@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from .api import camera,stations
+from .config import logmain
 from .dependecies import shared_client_start,shared_client_close
 from contextlib import asynccontextmanager
 
@@ -10,6 +11,7 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await shared_client_start()
+    logmain()
     yield
     await shared_client_close()
 
