@@ -1,13 +1,13 @@
-#from http.client import responses
-#from backend.app.main import app
-from fastapi import APIRouter
+# from http.client import responses
+# from backend.app.main import app
+import httpx
+from fastapi import APIRouter, Depends
+from ..dependecies import get_shared_client
 from ..services.fintraffic import camera_station
 
-routerCam= APIRouter(tags=["camera"], responses={404:{"description":"not found :<"}})
+router = APIRouter(tags=["camera"], responses={404: {"description": "not found :<"}})
 
-@routerCam.get("/camera/{camera_id}")
-async def getcameraframe(camera_id :str):
-    data = await camera_station(camera_id)
-    print(data)
-    return {"data": data}
-
+#Api route kutsutaan servicessä
+@router.get("/camera/{camera_id}")
+async def get_camera_frame(camera_id: str, client: httpx.AsyncClient = Depends(get_shared_client)):
+    return await camera_station(camera_id, client)

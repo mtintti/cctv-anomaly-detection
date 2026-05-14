@@ -1,14 +1,13 @@
-
-from fastapi import APIRouter
+import httpx
+from fastapi import APIRouter, Depends
+from ..dependecies import get_shared_client
 from ..services.fintraffic import all_stations
 
-routerstations= APIRouter(tags=["stations"], responses={404:{"description":"not found :<"}})
+router= APIRouter(tags=["stations"], responses={404:{"description":"not found :<"}})
 
-
-@routerstations.get("/stations")
-async def allstations():
-    data = await all_stations()
-    return {"data": data}
+@router.get("/stations")
+async def allstations(client: httpx.AsyncClient = Depends(get_shared_client)):
+    return await all_stations(client)
 
 
 
