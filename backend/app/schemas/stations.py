@@ -22,3 +22,10 @@ class StationFeat(BaseModel):
 
 class StationObjMain(BaseModel):
     features: list[StationFeat]
+
+class StationID(BaseModel):
+    type: str
+    id: str
+
+class StationObjID(BaseModel):
+    features: list[StationID]

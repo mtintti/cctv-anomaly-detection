@@ -37,6 +37,7 @@ async def all_stations(client: httpx.AsyncClient):
         try:
             partNeeded = StationObjMain.model_validate(response.json())
             return partNeeded
+            logger.info("station API GET got, and done!")
         except ValidationError as er:
             loggercrier.error("API response Pedantic validation or parse ERROR", exc_info=True)
     except httpx.TimeoutException:
