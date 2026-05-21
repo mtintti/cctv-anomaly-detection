@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, AnyUrl
 
 # pedantic data validointi REST API kutsuille, kun api requesti tapahtuu pedantic:illa
@@ -10,15 +12,15 @@ class CameraCoord(BaseModel):
 # kameran id url osoite kuviin, käytetään datasetissä ML modeliin
 class CameraPresetsImg(BaseModel):
     id: str
-    presentationName: str
+    presentationName: Optional[str] = None
     resolution: str
-    imageUrl: AnyUrl
+    imageUrl: str #was AnyUrl, but datatype conversion error in pycopg
 
 # properties json kutsussa, saadaan lähimmät kamerat ja Properties sisältää nested_object Presets -> url kuviin
 class CameraProp(BaseModel):
     id: str
     name: str
-    nearestWeatherStationId: int
+    nearestWeatherStationId: Optional[int] = None
     municipality: str
     presets: list[CameraPresetsImg]
 

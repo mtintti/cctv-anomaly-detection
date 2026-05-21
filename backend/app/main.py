@@ -3,6 +3,7 @@ from .api import camera,stations
 from .config import logmain
 from .dependecies import shared_client_start,shared_client_close
 from contextlib import asynccontextmanager
+from .schedules.scheduleAPI import start_timer
 
 # client (httpx.AsyncClient) on laitettuna alkamaan kun appi alkaa,
 # yield (stop) tapahtuu kun appi suljetaan. contextmanager:illa hallitaan lifecycle clientillä myöhemmin data injectionilla  (testit, docker?)
@@ -11,7 +12,8 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await shared_client_start()
-    logmain()
+    #logmain()
+    start_timer()
     yield
     await shared_client_close()
 

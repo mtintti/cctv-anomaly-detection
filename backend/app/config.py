@@ -7,6 +7,11 @@ from backend.app.logger import JSONFormatter
 # tallennettu Settings() luokkasta, täytetään __init__.py tiedostossa. Täällä on settings.kutsumanimet
 class Settings(BaseSettings):
     digitraffic_base:str
+    db_name:str
+    db_user: str
+    db_pass: str
+    db_host: str
+    db_port: str
 
 # loggin tiedot käyttäen. Config tiedosto (/logging_configs) laitetaan json muodossa logging:iin
 # DEBUG, INFO, ja WARNING leveling viestit loggerista printatataan std:cout terminaliin
