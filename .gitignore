@@ -9,5 +9,14 @@
 __pycache__/
 *.py[cod]
 
+*.log
+
+#ml's
+*.pt
+*.pth
+*.weights
+*.onnx
+*.png
+
 # Environment variables
 .env
