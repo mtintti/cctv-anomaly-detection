@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     db_pass: str
     db_host: str
     db_port: str
+    desktop: str
+    desktop_ann: str
+    outerfile: str
+    segann: str
 
 # loggin tiedot käyttäen. Config tiedosto (/logging_configs) laitetaan json muodossa logging:iin
 # DEBUG, INFO, ja WARNING leveling viestit loggerista printatataan std:cout terminaliin

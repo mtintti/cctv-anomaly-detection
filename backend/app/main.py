@@ -4,6 +4,8 @@ from .config import logmain
 from .dependecies import shared_client_start,shared_client_close
 from contextlib import asynccontextmanager
 from .schedules.scheduleAPI import start_timer
+from ..ml.segmentation.segmentation import ml_backend
+
 
 # client (httpx.AsyncClient) on laitettuna alkamaan kun appi alkaa,
 # yield (stop) tapahtuu kun appi suljetaan. contextmanager:illa hallitaan lifecycle clientillä myöhemmin data injectionilla  (testit, docker?)
@@ -13,7 +15,8 @@ from .schedules.scheduleAPI import start_timer
 async def lifespan(app: FastAPI):
     await shared_client_start()
     #logmain()
-    start_timer()
+    #start_timer()
+    ml_backend()
     yield
     await shared_client_close()
 
