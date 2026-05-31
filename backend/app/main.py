@@ -3,9 +3,10 @@ from .api import camera,stations
 from .config import logmain
 from .dependecies import shared_client_start,shared_client_close
 from contextlib import asynccontextmanager
-from .schedules.scheduleAPI import start_timer
-from ..ml.segmentation.segmentation import ml_backend
 
+from .services.db.database import open_pool
+from ..ml.segmentation.datasetPreparation.segmentation import ml_backend
+from .schedules.scheduleAPI import start_timer
 
 # client (httpx.AsyncClient) on laitettuna alkamaan kun appi alkaa,
 # yield (stop) tapahtuu kun appi suljetaan. contextmanager:illa hallitaan lifecycle clientillä myöhemmin data injectionilla  (testit, docker?)
@@ -14,14 +15,14 @@ from ..ml.segmentation.segmentation import ml_backend
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await shared_client_start()
-    #logmain()
-    #start_timer()
-    ml_backend()
+    logmain()
+    start_timer()
+    #ml_backend()
+    await open_pool()
     yield
     await shared_client_close()
 
 app= FastAPI(lifespan=lifespan)
-
 app.include_router(camera.router)
 app.include_router(stations.router)
 

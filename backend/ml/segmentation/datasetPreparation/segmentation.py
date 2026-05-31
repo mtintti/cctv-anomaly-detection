@@ -2,21 +2,20 @@
 import datetime
 import json
 import pathlib
-
 import numpy as np
 import cv2
 from ultralytics.models.sam import Predictor as sam
-
 from backend.app import settings
 
 names = { "alligator crack" : 0, "block crack" : 1, "longitudinal crack" : 2, "pothole" : 3, "transverse crack" : 4, "repair" : 5, "other corruption" : 6, }
 colors= { 0: [121, 212, 119], 1:[61, 128, 123], 2:[234, 184, 133], 3:[96, 112, 160], 4: [75, 40, 163], 5:[81,28,63], 6:[203, 118, 28] }
 imgname = ""
-overrides = dict(conf=0.25, task="segment", imgsz=512, mode="predict", model="sam_b.pt")
-predictor = sam(overrides=overrides)
+
 
 def ml_backend():
-    fileLoc()
+    overrides = dict(conf=0.25, task="segment", imgsz=512, mode="predict", model="sam_b.pt")
+    predictor = sam(overrides=overrides)
+    fileLoc(predictor)
 
 #desktop ja -ann on mistä training images ja .json tiedot saadaan SAM bbox:iä ja img classTitle:ä varten
 #outerfile, on mihin visuaalisoidut ja eri luokkatietojen segmentaatio mask's tallennetaan
@@ -24,7 +23,7 @@ desktop = pathlib.Path(settings.desktop)
 desktop_ann = pathlib.Path(settings.desktop_ann)
 outerfile = pathlib.Path(settings.outerfile)
 
-def fileLoc():
+def fileLoc(predictor):
     print("\n getting files..")
     indx = 0
     print("\n specific files: ")
@@ -54,13 +53,19 @@ def fileLoc():
                                     invi_indx += 1
                                     #print("\n object index, and invi ", objectindx, " ", invi_indx)
                                     #print("ann name to check if in same or diff??", ann)
-                                    create_sam_mask(imgdir, img_basename,classtitle, points, invi_indx)
+                                    create_sam_mask(predictor, imgdir, img_basename, classtitle, points, invi_indx)
 
             print("\n num of img and ann matches, ", indx)
 
+
+def create_file(full_path):
+    full_path.mkdir(parents=True, exist_ok=True)
+
+
 # SAM segmentaatio maski luodaan kuvan bounding box ndc koordinaatioista,
 # yhdessä luodussa kuvassa on monta luokkatietoa.
-def create_sam_mask(imgdir, img_basename, classtitle, points, invi_indx):
+
+def create_sam_mask(predictor, imgdir, img_basename, classtitle, points, invi_indx):
     indx = invi_indx
     outerpathdir = pathlib.Path(outerfile)
     image_rgb = cv2.imread(imgdir)
@@ -85,10 +90,6 @@ def create_sam_mask(imgdir, img_basename, classtitle, points, invi_indx):
         masks_Data = r.masks
         color_codedtraining(outerpathdir, imgfilename, masks_Data, res_val, image_rgb, invi_indx)
         create_mask_yxz_labels(masks_Data, img_basename, res_val)
-
-
-def create_file(full_path):
-    full_path.mkdir(parents=True, exist_ok=True)
 
 
 def label_per_enum(label_image,mask_Data):
