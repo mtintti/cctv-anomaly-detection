@@ -7,12 +7,19 @@ val: \val
 
 
 names:
-  "alligator crack" :0
-  "block crack" :1
-  "longitudinal crack" :2,
-  "pothole" :3
-  "transverse crack" :4
-  "repair" :5
-  "other corruption" :6
+  0: "alligator crack",
+  1: "block crack",
+  2: "longitudinal crack",
+  3: "pothole",
+  4: "transverse crack",
+  5: "repair",
+  6: "other corruption"
 
-colors= { 0: [170,154,221], 1:[105,106,23], 2:[204,234,133], 3:[96,160,160], 4: [40,163,86], 5:[81,28,63], 6:[151,28,203] }
+colors:
+  0: [170,154,221],
+  1: [105,106,23],
+  2: [204,234,133],
+  3: [96,160,160],
+  4: [40,163,86],
+  5: [81,28,63],
+  6: [151,28,203]

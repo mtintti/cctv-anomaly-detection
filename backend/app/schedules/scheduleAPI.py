@@ -5,8 +5,9 @@ from backend.app.config import logger, loggercrier
 from ..services.db.database import create_item_in_database, create_item_in_db_individual
 from ..services.fintraffic import all_stations, camera_station
 from .timehelper import get_time
+import asyncio
 
-scheduler = AsyncIOScheduler()
+
 wanted_target = ["id"]
 
 # haetaan Stations fintraffic id nimet, coordinaatit, properties, yms,
@@ -64,11 +65,12 @@ async def task():
             count += 1
             if count > 50:
                 logger.debug("sleeping.. API task limit reached")
-                sleep(65)
+                await asyncio(sleep(65))
                 total_calls += count
                 count = 0
                 await cameraAPIcall(idstring)
             else:
+                print("\n doing camAPIcall(string)")
                 await cameraAPIcall(idstring)
         logger.info("ScheduleAPI ended. The total stations went -> ", i)
 
@@ -76,7 +78,9 @@ async def task():
     except Exception as e:
         loggercrier.error("Task error happened after try: extract call", exc_info=True)
 
-job_id = scheduler.add_job(task, "interval", minutes=30)
+
 
 def start_timer():
+    scheduler = AsyncIOScheduler()
+    job_id = scheduler.add_job(task, "interval", minutes=4)
     scheduler.start()
