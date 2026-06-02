@@ -26,7 +26,7 @@ A scheduled background task (APScheduler) that walks all Fintraffic stations, fe
 **ML Pipeline (backend/ml/segmentation)**
 
 SAM (Segment Anything Model, sam_b.pt) integrated via Ultralytics for instance segmentation
-Dataset preparation pipeline that reads source images and their Supervisely-format JSON annotations, generates SAM segmentation masks using bounding box prompts, and writes YOLO segmentation label files (.txt) for model training
+Dataset preparation pipeline that reads source images and the images JSON annotations, generates SAM segmentation masks using bounding box prompts, and writes YOLO segmentation label files (.txt) for model training
 Visual debugging output — colour-coded segmentation masks composited onto source images, one colour per defect class
 Dataset configuration (dataset.yaml) for YOLO training
 
