@@ -2,8 +2,8 @@
 
 path: C:\ohjelmointi\HobbyProjects\cctv-training
 #train: train\img
-train: train\imgtest
-val: \val
+train: images\train
+val: images\validation
 
 
 names:
