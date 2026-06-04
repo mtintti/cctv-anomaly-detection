@@ -11,15 +11,18 @@ from ultralytics.models.sam import Predictor as sam
 from backend.app import settings
 from backend.ml.segmentation.datasetPreparation.img_transforms import image_specific_transforms
 
-names = { "alligator crack" : 0, "block crack" : 1, "longitudinal crack" : 2, "pothole" : 3, "transverse crack" : 4, "repair" : 5, "other corruption" : 6, }
-colors= { 0: [121, 212, 119], 1:[61, 128, 123], 2:[234, 184, 133], 3:[96, 112, 160], 4: [75, 40, 163], 5:[81,28,63], 6:[203, 118, 28] }
+#names = { "alligator crack" : 0, "block crack" : 1, "longitudinal crack" : 2, "pothole" : 3, "transverse crack" : 4, "repair" : 5, "other corruption" : 6, }
+names = { "alligator crack" : 0, "longitudinal crack" : 1, "pothole" : 2, "transverse crack" : 3, "other corruption" : 4}
+#colors= { 0: [121, 212, 119], 1:[61, 128, 123], 2:[234, 184, 133], 3:[96, 112, 160], 4: [75, 40, 163], 5:[81,28,63], 6:[203, 118, 28] }
+colors= { 0: [121, 212, 119], 1:[234, 184, 133], 2:[96, 112, 160], 3: [75, 40, 163], 4:[81,28,63] }
+
 imgname = ""
 
 
 def ml_backend():
     overrides = dict(conf=0.25, task="segment", imgsz=512, mode="predict", model="sam_b.pt")
     predictor = sam(overrides=overrides)
-    #fileLoc(predictor)
+    fileLoc(predictor)
     #image_specific_transforms(settings.segann, names)
 
     #id_to_name = {v: k for k, v in names.items()}
@@ -132,6 +135,8 @@ def create_mask_yxz_labels(mask_Data, img_basename, res_val):
     label_img_zero = np.zeros(array_shape, dtype=np.int32)
     #label_image = label_per_enum(label_img_zero, mask_Data)
     normalized_coords = mask_Data.xyn
+    if normalized_coords is None or all(len(p) == 0 for p in normalized_coords):
+        return
     textfile_name = f"{img_basename}.txt"
     segann_Path = pathlib.Path(settings.segann)
     create_file(segann_Path)

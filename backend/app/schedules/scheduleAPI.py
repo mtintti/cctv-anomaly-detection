@@ -74,7 +74,6 @@ async def task():
                 await cameraAPIcall(idstring)
         logger.info("ScheduleAPI ended. The total stations went -> ", i)
 
-
     except Exception as e:
         loggercrier.error("Task error happened after try: extract call", exc_info=True)
 
@@ -82,5 +81,5 @@ async def task():
 
 def start_timer():
     scheduler = AsyncIOScheduler()
-    job_id = scheduler.add_job(task, "interval", minutes=4)
+    job_id = scheduler.add_job(task, "interval", minutes=30)
     scheduler.start()
