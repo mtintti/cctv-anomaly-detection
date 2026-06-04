@@ -1,0 +1,15 @@
+
+
+path: C:/ohjelmointi/HobbyProjects/cctv-training
+#train: train\img
+train: images/train
+val: images/validation
+
+
+names:
+  0: "alligator crack"
+  1: "longitudinal crack"
+  2: "pothole"
+  3: "transverse crack"
+  4: "other corruption"
+

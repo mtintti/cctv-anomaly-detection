@@ -2,13 +2,20 @@
 import datetime
 import json
 import pathlib
+from collections import Counter
+
+import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 from ultralytics.models.sam import Predictor as sam
 from backend.app import settings
+from backend.ml.segmentation.datasetPreparation.img_transforms import image_specific_transforms
 
-names = { "alligator crack" : 0, "block crack" : 1, "longitudinal crack" : 2, "pothole" : 3, "transverse crack" : 4, "repair" : 5, "other corruption" : 6, }
-colors= { 0: [121, 212, 119], 1:[61, 128, 123], 2:[234, 184, 133], 3:[96, 112, 160], 4: [75, 40, 163], 5:[81,28,63], 6:[203, 118, 28] }
+#names = { "alligator crack" : 0, "block crack" : 1, "longitudinal crack" : 2, "pothole" : 3, "transverse crack" : 4, "repair" : 5, "other corruption" : 6, }
+names = { "alligator crack" : 0, "longitudinal crack" : 1, "pothole" : 2, "transverse crack" : 3, "other corruption" : 4}
+#colors= { 0: [121, 212, 119], 1:[61, 128, 123], 2:[234, 184, 133], 3:[96, 112, 160], 4: [75, 40, 163], 5:[81,28,63], 6:[203, 118, 28] }
+colors= { 0: [121, 212, 119], 1:[234, 184, 133], 2:[96, 112, 160], 3: [75, 40, 163], 4:[81,28,63] }
+
 imgname = ""
 
 
@@ -16,12 +23,19 @@ def ml_backend():
     overrides = dict(conf=0.25, task="segment", imgsz=512, mode="predict", model="sam_b.pt")
     predictor = sam(overrides=overrides)
     fileLoc(predictor)
+    #image_specific_transforms(settings.segann, names)
+
+    #id_to_name = {v: k for k, v in names.items()}
+    #counts = count_yolo_classes(settings.segann)
+    #histogram_from_yolo(counts, id_to_name)
+
 
 #desktop ja -ann on mistä training images ja .json tiedot saadaan SAM bbox:iä ja img classTitle:ä varten
 #outerfile, on mihin visuaalisoidut ja eri luokkatietojen segmentaatio mask's tallennetaan
 desktop = pathlib.Path(settings.desktop)
 desktop_ann = pathlib.Path(settings.desktop_ann)
 outerfile = pathlib.Path(settings.outerfile)
+classCount = Counter()
 
 def fileLoc(predictor):
     print("\n getting files..")
@@ -30,8 +44,11 @@ def fileLoc(predictor):
     for item in desktop.iterdir():
         if item.is_file():
             imgname = item.name
+            '''try:
+                if "India" in imgname:'''
             imgdir = item.__str__()
             img_suffix = str(item.suffix)
+            #print("\n item name found, ", imgname)
             img_basename = imgname.replace(img_suffix, '')
             for ann_item in desktop_ann.iterdir():
                 if ann_item.is_file():
@@ -41,13 +58,17 @@ def fileLoc(predictor):
                     if ann_suffix in ann_name:
                         ann = ann_name.replace(ann_suffix, '')
                         if ann == imgname:
+                            #print("ann, ", ann, " imgbase, ", img_basename)
                             indx+= 1
                             with open(ann_dir, "r") as jsonfile:
                                 data = json.load((jsonfile))
+                                #print("\n data found, ", data)
                                 objectindx = len(data["objects"])
                                 invi_indx = 0
                                 while objectindx > 0:
                                     classtitle = data["objects"][invi_indx]["classTitle"]
+                                    classCount[classtitle] += 1
+                                    #print("\n classtitle: ", classtitle, " at ", img_basename)
                                     points = data["objects"][invi_indx]["points"]["exterior"]
                                     objectindx -= 1
                                     invi_indx += 1
@@ -55,7 +76,11 @@ def fileLoc(predictor):
                                     #print("ann name to check if in same or diff??", ann)
                                     create_sam_mask(predictor, imgdir, img_basename, classtitle, points, invi_indx)
 
-            print("\n num of img and ann matches, ", indx)
+            '''finally:
+                    if "India" not in img_basename:
+                        print("\n was not found :< ", item.name)'''
+        print("\n num of img and ann matches, ", indx)
+    print("\n done segmenting.. showing histogram")
 
 
 def create_file(full_path):
@@ -75,7 +100,6 @@ def create_sam_mask(predictor, imgdir, img_basename, classtitle, points, invi_in
     create_file(save_directory)
     create_file(outerpathdir)
     imgfilename = f"{img_basename}.jpg"
-
     # kuvan .json bboxin koordinaatit, jotka rajavat segmentaation
     minx = points[0][0]
     miny = points[0][1]
@@ -111,6 +135,8 @@ def create_mask_yxz_labels(mask_Data, img_basename, res_val):
     label_img_zero = np.zeros(array_shape, dtype=np.int32)
     #label_image = label_per_enum(label_img_zero, mask_Data)
     normalized_coords = mask_Data.xyn
+    if normalized_coords is None or all(len(p) == 0 for p in normalized_coords):
+        return
     textfile_name = f"{img_basename}.txt"
     segann_Path = pathlib.Path(settings.segann)
     create_file(segann_Path)
@@ -128,7 +154,7 @@ def create_mask_yxz_labels(mask_Data, img_basename, res_val):
         reader = open(str(segann_Path / textfile_name), "w")
     else:
         reader = open(str(segann_Path / textfile_name), "a")
-        print("rewriting contents.. ")
+        #print("rewriting contents.. ")
         # before if rewrite change
     '''if fulltext_file.is_file():
         reader = open(str(segann_Path/textfile_name), "a")
@@ -136,6 +162,7 @@ def create_mask_yxz_labels(mask_Data, img_basename, res_val):
         reader = open(str(segann_Path / textfile_name), "w")'''
 
     try:
+
         for y, mask in enumerate(normalized_coords):
             reader.write("\n")
             reader.write(str(res_val))
@@ -169,4 +196,70 @@ def color_codedtraining(outerpathdir, imgfilename, masks_Data, res_val, image_rg
         # aka new image with old results in it
         blended = cv2.addWeighted(img, 1 - alpha, colored_mask, alpha, 0)
         cv2.imwrite(str(outerpathdir / imgfilename), blended)
+
+
+def count_yolo_classes(segann_path):
+
+    class_counts = Counter()
+
+    segann_path = pathlib.Path(segann_path)
+
+    for txt_file in segann_path.glob("*.txt"):
+
+        with open(txt_file, "r") as reader:
+
+            for line in reader:
+
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                values = line.split()
+
+                class_id = int(values[0])
+
+                class_counts[class_id] += 1
+
+    return class_counts
+
+
+def print_distribution(id_to_name, class_counts):
+
+    total = sum(class_counts.values())
+
+    for class_id, count in sorted(class_counts.items()):
+
+        class_name = id_to_name[class_id]
+
+        pct = 100 * count / total
+
+        print(
+            f"{class_name}: {count} ({pct:.2f}%)"
+        )
+
+def histogram_from_yolo(class_counts, id_to_name):
+
+    labels = [
+        id_to_name[class_id]
+        for class_id in sorted(class_counts.keys())
+    ]
+
+    counts = [
+        class_counts[class_id]
+        for class_id in sorted(class_counts.keys())
+    ]
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(labels, counts)
+
+    plt.xlabel("Class")
+    plt.ylabel("Number of annotations")
+    plt.title("YOLO Segmentation Dataset Distribution")
+
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.show()
+    print_distribution(id_to_name, class_counts)
+
 
