@@ -1,33 +1,3 @@
-/*'use client'
-import React from 'react';
-import {FormEvent, onChange, useState} from 'react'
-import { redirect } from 'next/navigation';
-
-type FormImageProps = {
-  data_gotFromPost: (data: any) => void;
-};
-
-
-export default function ImageSearch({stations}){
-
-     const [searchfilter, setSearchfilter] = useState("");
-    function searchres(event) {
-        const searchstring = event.target.value.toLowerCase();
-        console.log("written name", searchstring)
-        const resultsearch = stations.filter((stat) => stat.properties.name.toLowerCase().includes(searchstring));
-        //console.log("searched name", resultsearch.properties.name)
-        //console.log("\n whole station", stat.properties.name)
-        setSearchfilter(resultsearch);
-        }
-
-
-    return(
-        <form>
-      <input type='text' name='file' onChange={searchres} accept='text/plain'></input>
-      </form>
-      )
-}*/
-
 "use client";
 
 import { useState, ReactNode } from "react";
@@ -52,10 +22,12 @@ type Props = {
 export default function ImageSearch({
   stations,
   onStationSelect,
+  selectedStation,
 }: Props) {
 
 
   const [search, setSearch] = useState("");
+  const  [sidescroll,setSidescroll] = useState(false)
   const showSearchRes = search.length > 3;
 
   const filtered = stations.filter((station) =>
@@ -63,58 +35,69 @@ export default function ImageSearch({
       .toLowerCase()
       .includes(search.toLowerCase())
   );
+  //console.log("filtered search, ",filtered)
+  /*if(showSearchRes){
+       console.log("filtered is more than / or 4 ",search.length);
+  };*/
 
-  const filteredId = filtered.filter((stationId) =>
-    stationId.properties.presets[0].length
-  );
-  console.log("filtered ids, ", filteredId)
-
-
-  function idForStation(itemNum: item.properties.presets.length, inx){
-      console.log(inx, " and itemNum ", itemNum);
-      /*while(itemNum){
-          console.log("item in inx ", inx, " ", itemNum)
-          inx--;
-          }*/
-
-      }
-  if(filtered.length != 0 && showSearchRes){
-    filteredId.forEach(idForStation);
+  if(selectedStation){
+      console.log("selected station in image search, ",selectedStation)
+  }
+  if(sidescroll == true){
+      console.log("is sidescroll true?, ", sidescroll)
   }
 
-  console.log("filtered search, ",filtered.length)
-  //console.log("filteredId search, ",filteredId)
-  if(showSearchRes){
-       console.log("filtered is more than 4 ",search.length);
-  };
-    //const filteredchilds = filtered.filter((invi) => invi.properties.presets);
-
-//console.log("filtered child, " ,filteredchilds[0].properties.presets)
   return (
-    <>
-     <input className="w-96 h-8 bbg-gray-100 pl-4 rounded-xl shadow-sm"
+    <div className="z-10 relative">
+     <input className="flex justify-start pt-1 pl-4 w-90 h-8 rounded-xl shadow-sm shadow-gray-300"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search station"
       />
      <Conditional showWhen={showSearchRes}>
 
-      <ul>
+      {/*first dropdown*/}
+      <ul className="bg-gray-200 absolute -right-40 w-full mt-2 max-h-100 rounded-md scroll-smooth scrollbar-thumb-slate-900/60 scrollbar-track-slate-200/10 overflow-y-auto inset-shadow-sm inset-shadow-gray-300">
         {filtered.map((station) => (
           <li
             key={station.id}
-            onClick={() => onStationSelect(station)}
+            onClick={() => onStationSelect(station) && setSidescroll(true)}
           >
-          <div className="pl-4 pt-1 rounded-md hover:bg-indigo-50 hover:shadow-md hover:shadow-indigo-100">
-            {station.properties.name}
+          <div className="pl-4 pt-3 pb-2 rounded-md hover:bg-indigo-50 hover:shadow-md hover:shadow-indigo-100 ">
+             <div className="relative flex inline-block text-sm font-extralight ">
+                 <div className="">
+                    {station.properties.name}
+                 </div>
+                <span className="absolute -top-2 -right-4 flex items-center justify-center w-5 h-5 rounded-full bg-indigo-400 shadow-sm shadow-indigo-500 text-indigo-200 font-extralight text-xs">
+                    {station.properties.presets.length}
+                </span>
+             </div>
           </div>
           </li>
         ))}
-        {/*{filteredchilds.map((invi) => (
-            <li key={stations.id}>{invi.properties.presets[0].id}</li>
-            ))}*/}
       </ul>
+
+      {/*second dropdown*/}
+      {selectedStation ?
+      <ul className="bg-gray-200 absolute m-8 w-30 mt-2 max-h-100 rounded-md scroll-smooth scrollbar-thumb-slate-900/60 scrollbar-track-slate-200/10 overflow-y-auto inset-shadow-sm inset-shadow-gray-300">
+        {selectedStation.properties.presets.map((invi) => (
+          <li
+            key={invi.id}
+            onClick={() => onStationSelect(invi.id)}
+          >
+          <div className="pl-4 pt-3 pb-2 rounded-md hover:bg-indigo-50 hover:shadow-md hover:shadow-indigo-100 ">
+             <div className="relative flex inline-block text-sm font-extralight ">
+                 <div className="">
+                    {invi.id}
+                 </div>
+             </div>
+          </div>
+          </li>
+        ))}
+      </ul> :
+       <></>
+      }
      </Conditional>
-    </>
+    </div>
   );
 }
