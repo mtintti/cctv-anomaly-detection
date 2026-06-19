@@ -16,18 +16,36 @@ export default function ImageContainer({
     useState<Station | null>(null);
 
   const [result, setResult] = useState<any>(null);
+  const [prevCam, setprevCam] = useState("");
+  let wanted_imgUrl = "";
 
-  async function submitHandler() {
+  async function submitHandler(station, selectedFile) {
     const formData = new FormData();
 
     if (selectedFile) {
       formData.append("file", selectedFile);
+      console.log("formdata, in file", formData)
     }
 
-    if (selectedStation) {
+    if (station) {
+        setprevCam(station)
+        if(station.includes(prevCam) == true && prevCam.length > 0){
+            const res = await fetch(`http://localhost:8000/camera/${prevCam}`);
+            const camdata = await res.json();
+            const camdata_arr =  Object.values(camdata.properties.presets);
+            camdata_arr.forEach(function (x, i){
+            if(x.id.includes(station)){
+                wanted_imgUrl = x.imageUrl;
+                console.log("clicked url, ", wanted_imgUrl)
+             }
+            }
+          );
+        }
+
+
       formData.append(
-        "stationId",
-        selectedStation.id
+        "urlname",
+        wanted_imgUrl
       );
     }
 
@@ -45,21 +63,18 @@ export default function ImageContainer({
   }
 
   return (
-    <div className="grid grid-flow-col grid-cols-3 pl-4 gap-2">
+    <div className="grid md:grid-cols-3 pl-4 sm:w-10 md:w-full gap-2">
       <FormImage
         onFileSelect={(file) => {
           setSelectedFile(file);
           console.log(file)
-          //setSelectedStation(null);
         }}
       />
           <ImageSearch
             stations={stations}
             selectedStation={selectedStation}
             onStationSelect={(station) => {
-              setSelectedStation(station);
-              console.log(station)
-              //setSelectedFile(null);
+              submitHandler(station)
             }}
           />
       <Link className="pr-2" href="/predict">
