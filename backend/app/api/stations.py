@@ -10,5 +10,3 @@ async def allstations(client: httpx.AsyncClient = Depends(get_shared_client)):
     return await all_stations(client)
 
 
-
-
