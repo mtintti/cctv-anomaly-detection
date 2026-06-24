@@ -1,5 +1,6 @@
 import FormImage from './form-component';
 import ImageContainer from './imageContainer.tsx'
+import ParallaxHero from "./hero.tsx"
 
 interface StationsRes {
   features: Station[];
@@ -11,12 +12,34 @@ export default async function FrontPage(){
    const data_from_fetch = await responce_got.json();
    const stationsAll = await fetch("http://localhost:8000/stations", {cache: 'no-store'});
    const stationdata: StationsRes = await stationsAll.json();
+
+
     return (
     <div className="pt-5 pb-8 z-0">
       <ImageContainer stations={stationdata.features}/>
+      {/* hero section */} {/*grid md:grid-cols-2 md:grid-rows-0 */}
+       {/*
+      <div className=" mt-5 bg-red-50 max-w-full justify-items">
+        <div className="absolute text-shadow-sm text-shadow-indigo-400 justify-items-center mt-10 text-slate-300 tracking-wider sm:pl-10 md:pl-4 grid sm:grid-cols-3">
+        <p className="sm:text-xl md:text-4xl font-bold">have you ever felt</p>
+        <p className="sm:text-xl md:text-4xl font-bold text-blue-900 bg-blue-100 px-1">roadbumps</p>
+        <p className="sm:text-xl md:text-4xl font-bold">along the way</p>
+        </div>
+
+        <div className="max-w-full">
+        <Image className="md:max-h-screen sm:h-screen" alt="predicted, segmented mask image showing found anomalities" preload={true} preload={true} src={baseImage}/>
+        <Image className="relative justify-items-center -mt-40 w-40 h-40" alt="predicted, segmented mask image showing found anomalities" preload={true} preload={true} objectFit="cover" src={segment_red}/>
+        <Image className="relative justify-items-center -mt-40 -mr-10 w-40 h-40" alt="predicted, segmented mask image showing found anomalities" preload={true} preload={true} objectFit="cover" src={segment_green}/>
+        <Image className="relative justify-items-center -mt-40 -mr-30 w-40 h-40" alt="predicted, segmented mask image showing found anomalities" preload={true} preload={true} objectFit="cover" src={segment_blue1}/>
+        <Image className="relative justify-items-center -mt-40 -mr-40 w-40 h-40" alt="predicted, segmented mask image showing found anomalities" preload={true} preload={true} objectFit="cover" src={segment_blue2}/>
+        </div>
+      </div>
+      */}
+      <ParallaxHero/>
+
 
       {/* row features component */}
-      <div className="max-w-4xl mx-auto px-5 mt-16">
+      <div className="max-w-4xl mx-auto px-5 mt-6">
 
     <div className="text-center">
         <h2 className="font-semibold text-3xl">Features you'll love</h2>

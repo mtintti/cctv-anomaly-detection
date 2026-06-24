@@ -11,11 +11,14 @@ from fastapi import Depends, File, UploadFile, Request, HTTPException
 import onnxruntime
 from PIL import Image
 from io import BytesIO
+from fastapi import APIRouter, UploadFile, File, Form
+
 
 from numpy import ndarray, dtype
 from starlette.responses import Response
 
 from backend.app.config import logger
+from backend.ml.schema.predict import predictBase
 
 urls = ['C:/ohjelmointi/HobbyProjects/cctv-training/images/train/C0150409_tie-2-karkkila.jpg', ]
 
@@ -66,10 +69,12 @@ async def get_file(req: Request):
 '''
 
 @router.post("/predict")
-async def get_prediction(req: Request,file: UploadFile = File(...)):
+async def get_prediction(req: Request,  file: list[UploadFile] = File(default=[]),
+    url: list[str] = Form(default=[])): #file: UploadFile = File(...), received: predictBase
     try:
-        print("file got as?? ", file)
-        if file.content_type not in allowed_types:
+        print("files received:", [f.filename for f in file])
+        print("urls received:", url)
+        '''if file.content_type not in allowed_types:
             print("file content type, ", file.content_type)
             raise HTTPException(status_code=415, detail='wrong type of file, use .png, .jpg or .pdf')
 
@@ -81,7 +86,7 @@ async def get_prediction(req: Request,file: UploadFile = File(...)):
         print("\n files type, ")
         print(file.content_type)
         print("\n file gotten in /predict")
-        print(file.filename)
+        print(file.filename)'''
         #test_image = Image.open(BytesIO(file))
         ##return {"filename": file.filename, "filecontent": file.content_type, "filesize":file_size}
         #data = url_change_to_img(file)
@@ -89,7 +94,8 @@ async def get_prediction(req: Request,file: UploadFile = File(...)):
         ##print("\n res got from image_proccess, " , res)
         ##response_onnx = get_predictions(res)
         ##print("\n onnx got back, ", response_onnx)
-        return {"filename": file.filename} ##"onnx": response_onnx,
+
+        #return {"filename": file.filename} ##"onnx": response_onnx,
     except Exception:
         logger.error("error in /predict: ", exc_info=True)
     #data = image_process(file)
