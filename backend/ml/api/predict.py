@@ -1,13 +1,17 @@
 import time
-import urllib.request
+
 import numpy as np
 import onnxruntime
 import requests
 from PIL import Image
 from io import BytesIO
+import torch
+import torchvision.ops as ops
 from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException
+
 from backend.app.config import logger
-from backend.ml.schema.predict import predictBase
+from backend.ml.api.letterboxing import letterbox, ImgSize
+from backend.ml.api.onnxtoimg import onnx_to_img #objects_found was previously here, objects_found
 
 
 router = APIRouter()
@@ -18,32 +22,19 @@ allowed_types = {'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'JP
 max_size_allowed = 1024 * 1024 *25 #24mb
 
 ml_inference_log = []
-
+#objects_found = []
 async def filecheck(f, req, size = None):
     file_size = 0
-    #print("filecheck ", f)
     if hasattr(f, "content_type"):  #content_type or f.format not in allowed_types:
         if f.content_type not in allowed_types:
-            #print("file content type, ", f.content_type)
             raise HTTPException(status_code=415, detail='wrong type of file, use .png, .jpg or .pdf')
         else:
-            #print("file is in allowed format/type ")
             file_size += int(req.headers.get("content-length"))
-            #print(file_size)
     else:
         if f not in allowed_types:
-            #print("res.headers[Content-Type]", f)
             raise HTTPException(status_code=415, detail='wrong type of file, use .png, .jpg or .pdf')
         if f in allowed_types:
             file_size += int(size)
-            #print("file is in allowed format/type ")
-            #print(file_size)
-
-    '''elif hasattr(f, "format"):
-        if f.format not in allowed_types:
-            print("file.format", f.format)
-            raise HTTPException(status_code=415, detail='wrong type of file, use .png, .jpg or .pdf')'''
-
 
 
     #print(f"{file_size/ 1024 / 1024} MB and max filesize {max_size_allowed / 1024 / 1024} MB")
@@ -54,43 +45,34 @@ async def filecheck(f, req, size = None):
     return f
 
 async def url_change_to_img(invi_url,indx_for_url, req):
-    #url_img_name = f"backend/ml/processed/invifile{indx_for_url}.jpg"
-    #print("invi url_change_to for ", invi_url)
-    # old res = urllib.request.urlretrieve(invi_url, url_img_name)
-    # no longer adding images to disk ^
 
     res = requests.get(invi_url, stream=True)
     checked_img = await filecheck(res.headers["Content-Type"], req, res.headers["Content-Length"])
     bytes_from_checkedimg = res.content
 
-    #past code when we stored url images to disk in backend/processed
-    # img = Image.open(url_img_name)
-    #checked_img = await filecheck(res.headers, req)
-    #print("checked image is a ",type(checked_img))
-    #buff = BytesIO()
-    #checked_img.save(buff, 'JPEG')
-    #bytes_from_checkedimg = buff.getvalue()
-    #print(type(bytes_from_checkedimg), " changed to be rgb and saved as a jpeg. returning bytes :? ... ")
-
     return bytes_from_checkedimg
 
+
 async def image_process(bytes_from_img):
+    # resizing original image size to onnx models expected/trained on input size of 512x512. we then change the 512x512 image to expected onnx models input.
+    # we return onnx model input, original image in PIL form, original images width, original images h
     try:
-        #print("\n what got in image_proccess", bytes_from_img)
-        #print("type of?? ", type(bytes_from_img))
-        #test_image = cv2.imread(str_got)
         start = time.perf_counter()
         image_stream = BytesIO(bytes_from_img)
-        #print("then img_stream type of?? ", type(image_stream))
         test_image = Image.open(image_stream).convert("RGB")
         test_image.load()
-        w, h = test_image.size
+
+        original_img_w, original_img_h = test_image.size
+        img_arr = np.array(test_image)
+        letterbox_res = letterbox(img_arr, ImgSize(512, 512))
+        resized_img = letterbox_res[0]
+        scale = letterbox_res[1]
+        pad = letterbox_res[2]
 
         #pienennetään img kokoa koska model expectaa 512x512 kokoisen kuvan,
         # w ja h tarvitaan jotta img voidaan resizeta oikeaan alkuperäiseen muotoon
         nw = 512
-        nh = int(h * (nw / w))
-        resized_img= test_image.resize((nw, nh), Image.BICUBIC)
+        nh = int(original_img_h * (nw / original_img_w))
 
         changed = np.array(resized_img, dtype=np.float32)
         changed = changed / 255.0
@@ -98,40 +80,99 @@ async def image_process(bytes_from_img):
         changed = np.expand_dims(changed, axis=0)
 
         ml_inference_log.append((time.perf_counter() - start) * 1000)
-        return changed, w,h
+        return changed, test_image, original_img_w, original_img_h, scale, pad
     except Exception:
-        logger.error("error in image_proccess, /predict: ", exc_info=True)
+        logger.expection("error in image_proccess, /predict: ", exc_info=True)
 
 
-def get_predictions(data, w, h):
+
+def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found):
+    global classname_id
     start = time.perf_counter()
 
     input = sess.get_inputs()[0].name
-    #print("\n \pred get predictions, in", input)
-    #print("\n input dtype ", sess.get_inputs()[0].type)
-    #print("\n data in .onnx model, ", type(data))
     out_all = [output_invi.name for output_invi in sess.get_outputs()]
-    #print("output, ", out_all)
     start_sess = time.perf_counter()
     res = sess.run(out_all,  {'images':data})
-    #print(f"session's Inference time: {(time.perf_counter() - start_sess) * 1000:.2f} ms")
     ml_inference_log.append((time.perf_counter() - start_sess) * 1000)
-    #print("\n res of get onnx, ", type(res))
-    #print(res)
-    return res
+    start_decodeimg = time.perf_counter()
+    output0 = res[0]
+    output1 = res[1]
+
+    output0 = output0[0]
+    output1 = output1[0]
+
+    scores = output0[0:300, 4]
+    out0 = torch.from_numpy(output0)
+    prediction_scores = torch.from_numpy(scores)
+    reduced_output_indx = ops.nms(out0[:,0:4],prediction_scores,0.60)
+    index_lookup = reduced_output_indx.tolist()
+    pruned_output0 = []
+    index = 0
+
+
+    for x in range(len(output0)):
+        if index_lookup[index] is x :
+            pruned_output0.append(output0[x])
+            index += 1
+
+    out0arr = np.array(pruned_output0)
+
+    boxes = out0arr[:,0:6] # was [:,0:9]
+    coeffincies_segmasks = out0arr[:,6:] #was output0[:,9:]
+    segmasks_prototypes = output1
+
+    #overlay_seg, overlay_bbox, blended_together, original_image_RGBA = onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad)
+    final_composed_images, original_image_RGBA = onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found)
+    ml_inference_log.append((time.perf_counter() - start_decodeimg) * 1000)
+    return final_composed_images, original_image_RGBA
 
 
 
 @router.post("/predict")
 async def get_prediction(req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[])): #file: UploadFile = File(...),
     try:
-
+        '''
+        #objects_found = [] was here, but our objects_found index list would persist if there would be an file and images passed through the api, aka
+        file one and one imageurl is passed to api
+        our we process the one file first and fine 4 different anomalies in it, 
+        File log:
+            finalised boxes and coeffs shape  (4, 6)   (4, 32)
+            in range objects_found  index=0 
+            in range objects_found  index=1
+            in range objects_found  index=2
+            in range objects_found  index=3
+            moving to reshape_combined 
+            shape of masks_sigmid  torch.Size([4, 128, 128])
+            
+            
+            moved past combining both overlays
+            final_composed length,  4
+            length of all_colors  4
+        # we then pass and show the 4 images in our predict main loop. We then process our image and pass it to our onnx model session.
+        # our objects found never gets cleared in between our file and image processing. the lists past additions are present still
+        Image Log:
+            info appended to objects found  5
+            past loop boxes in onnx_to_img  5
+            finalised boxes and coeffs shape  (1, 6)   (1, 32)
+            in range objects_found  index=0 
+            in range objects_found  index=1
+            in range objects_found  index=2
+            in range objects_found  index=3
+            in range objects_found  index=0 # new images prediction, 0 -> 3 are files
+            shape of bbox coords  torch.Size([5, 4]) # 4 files bbox coords and one images :<
+        
+        
+        '''
+        objects_found = []
         print("files received:", [f.filename for f in file])
         print("urls received:", url)
         indx_for_url = 0
-        print("cleared? ml_log ", len(ml_inference_log))
+        print("cleared? ml_log ", len(ml_inference_log), " objects_found ", len(objects_found))
 
         start_wholerun = time.perf_counter()
+
+
 
         if len(file) > 0:
             #file handling
@@ -142,10 +183,21 @@ async def get_prediction(req: Request, file: list[UploadFile] = File(default=[])
                 ml_inference_log.append((time.perf_counter() - start_handleimg) * 1000)
                 reswith_width_height = await image_process(bytes_from_img)
                 res = reswith_width_height[0]
-                w = reswith_width_height[1]
-                h = reswith_width_height[2]
-
-                get_predictions(res, w, h)
+                original_image = reswith_width_height[1]
+                original_img_w = reswith_width_height[2]
+                original_img_h = reswith_width_height[3]
+                scale = reswith_width_height[4]
+                pad = reswith_width_height[5]
+                #overlay_seg, overlay_bbox, blended_together, original_image_RGBA = get_predictions(res, original_image, original_img_w, original_img_h, scale, pad)
+                final_composed_images, original_image_RGBA = get_predictions(res,original_image, original_img_w, original_img_h, scale, pad, objects_found)
+                for z in range(len(final_composed_images)):
+                    invidual = final_composed_images[z]
+                    index = invidual.index
+                    segmask = invidual.overlay_seg
+                    bbox = invidual.overlay_bbox
+                    blended_together = invidual.blended_together
+                    complete = Image.alpha_composite(original_image_RGBA, blended_together)
+                    complete.show()
 
 
         if len(url) > 0:
@@ -158,9 +210,21 @@ async def get_prediction(req: Request, file: list[UploadFile] = File(default=[])
                 ml_inference_log.append((time.perf_counter() - start_handleimg) * 1000)
                 res_url_WidthHeight = await image_process(bytes_from_url_img)
                 res = res_url_WidthHeight[0]
-                w = res_url_WidthHeight[1]
-                h = res_url_WidthHeight[2]
-                get_predictions(res, w, h)
+                original_image = res_url_WidthHeight[1]
+                original_img_w = res_url_WidthHeight[2]
+                original_img_h = res_url_WidthHeight[3]
+                scale = res_url_WidthHeight[4]
+                pad = res_url_WidthHeight[5]
+                #overlay_seg, overlay_bbox, blended_together, original_image_RGBA = get_predictions(res,original_image, original_img_w, original_img_h, scale, pad)
+                final_composed_images, original_image_RGBA = get_predictions(res,original_image, original_img_w, original_img_h, scale, pad, objects_found)
+                for z in range(len(final_composed_images)):
+                    invidual = final_composed_images[z]
+                    index = invidual.index
+                    segmask = invidual.overlay_seg
+                    bbox = invidual.overlay_bbox
+                    blended_together = invidual.blended_together
+                    complete = Image.alpha_composite(original_image_RGBA, blended_together)
+                    complete.show()
 
         ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
 
@@ -172,9 +236,13 @@ async def get_prediction(req: Request, file: list[UploadFile] = File(default=[])
         print("--- fin ---")
         print(f"Whole run's time {ml_inference_log[-1]:.2f} ms")
         print("")
-        print("size ml_log ", len(ml_inference_log))
+        print("found objects")
+        for x in objects_found:
+            print(x)
+        print("size ml_log ", len(ml_inference_log),  " objects_found ", len(objects_found))
         ml_inference_log.clear()
-        print("cleared ml_log ", len(ml_inference_log))
+        objects_found.clear()
+        print("cleared ml_log ", len(ml_inference_log),  " objects_found ", len(objects_found))
 
     except Exception:
         logger.error("error in /predict: ", exc_info=True)
