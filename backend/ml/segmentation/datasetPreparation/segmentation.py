@@ -7,6 +7,7 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+from PIL import Image
 from ultralytics.models.sam import Predictor as sam
 from backend.app import settings
 from backend.ml.segmentation.datasetPreparation.img_transforms import image_specific_transforms
@@ -14,7 +15,7 @@ from backend.ml.segmentation.datasetPreparation.img_transforms import image_spec
 #names = { "alligator crack" : 0, "block crack" : 1, "longitudinal crack" : 2, "pothole" : 3, "transverse crack" : 4, "repair" : 5, "other corruption" : 6, }
 names = { "alligator crack" : 0, "longitudinal crack" : 1, "pothole" : 2, "transverse crack" : 3, "other corruption" : 4}
 #colors= { 0: [121, 212, 119], 1:[61, 128, 123], 2:[234, 184, 133], 3:[96, 112, 160], 4: [75, 40, 163], 5:[81,28,63], 6:[203, 118, 28] }
-colors= { 0: [121, 212, 119], 1:[234, 184, 133], 2:[96, 112, 160], 3: [75, 40, 163], 4:[81,28,63] }
+colors= { 0: [121, 212, 119, 255], 1:[234, 184, 133, 255], 2:[96, 112, 160, 255], 3: [75, 40, 163, 255], 4:[81,28,63, 255] }
 
 imgname = ""
 
@@ -22,6 +23,7 @@ imgname = ""
 def ml_backend():
     overrides = dict(conf=0.25, task="segment", imgsz=512, mode="predict", model="sam_b.pt")
     predictor = sam(overrides=overrides)
+    #convertImage()
     fileLoc(predictor)
     #image_specific_transforms(settings.segann, names)
 
@@ -48,21 +50,25 @@ def fileLoc(predictor):
                 if "India" in imgname:'''
             imgdir = item.__str__()
             img_suffix = str(item.suffix)
-            #print("\n item name found, ", imgname)
+            print("\n item name found, ", imgname)
             img_basename = imgname.replace(img_suffix, '')
             for ann_item in desktop_ann.iterdir():
                 if ann_item.is_file():
                     ann_name = str(ann_item.name)
+                    #print("\n item ann name found, ", ann_name)
                     ann_suffix = str(ann_item.suffix)
                     ann_dir = ann_item.__str__()
                     if ann_suffix in ann_name:
                         ann = ann_name.replace(ann_suffix, '')
+                        print("only ann: ", ann)
+                        if 'China' in imgname:
+                            print("china found, ", imgname, " annotation name ",ann)
                         if ann == imgname:
-                            #print("ann, ", ann, " imgbase, ", img_basename)
+                            print("ann, ", ann, " imgbase, ", img_basename)
                             indx+= 1
                             with open(ann_dir, "r") as jsonfile:
                                 data = json.load((jsonfile))
-                                #print("\n data found, ", data)
+                                print("\n data found, ", data)
                                 objectindx = len(data["objects"])
                                 invi_indx = 0
                                 while objectindx > 0:
@@ -72,7 +78,7 @@ def fileLoc(predictor):
                                     points = data["objects"][invi_indx]["points"]["exterior"]
                                     objectindx -= 1
                                     invi_indx += 1
-                                    #print("\n object index, and invi ", objectindx, " ", invi_indx)
+                                    print("\n object index, and invi ", objectindx, " ", invi_indx)
                                     #print("ann name to check if in same or diff??", ann)
                                     create_sam_mask(predictor, imgdir, img_basename, classtitle, points, invi_indx)
 
@@ -99,7 +105,7 @@ def create_sam_mask(predictor, imgdir, img_basename, classtitle, points, invi_in
     save_directory = pathlib.Path(parent_folder / "past-runs")
     create_file(save_directory)
     create_file(outerpathdir)
-    imgfilename = f"{img_basename}.jpg"
+    imgfilename = f"{img_basename,invi_indx}.png"
     # kuvan .json bboxin koordinaatit, jotka rajavat segmentaation
     minx = points[0][0]
     miny = points[0][1]
@@ -176,10 +182,27 @@ def create_mask_yxz_labels(mask_Data, img_basename, res_val):
         reader.close()
         print("file done")
 
+def convertImage():
+    img = Image.open("C:/ohjelmointi/HobbyProjects/cctv-training/train/imgtest/onerun/China_Drone_000823_seg.png")
+    img = img.convert("RGBA")
+
+    datas = img.getdata()
+
+    newData = []
+
+    for item in datas:
+        if item[0] == 255 and item[1] == 255 and item[2] == 255:
+            newData.append((255, 255, 255, 0))
+        else:
+            newData.append(item)
+
+    img.putdata(newData)
+    img.save("C:/ohjelmointi/HobbyProjects/cctv-training/train/imgtest/onerun/China_Drone_000823_seg.png", "PNG")
+    print("Successful")
 
 def color_codedtraining(outerpathdir, imgfilename, masks_Data, res_val, image_rgb, invi_indx):
 
-        #the new image with more than one segmentation masks already in it
+        '''#the new image with more than one segmentation masks already in it
         if invi_indx > 1:
             img = cv2.imread(str(outerpathdir / imgfilename))
         else:
@@ -195,7 +218,33 @@ def color_codedtraining(outerpathdir, imgfilename, masks_Data, res_val, image_rg
         #img is 'old' image, colored_mask is where the 'new' img gets data added
         # aka new image with old results in it
         blended = cv2.addWeighted(img, 1 - alpha, colored_mask, alpha, 0)
-        cv2.imwrite(str(outerpathdir / imgfilename), blended)
+        cv2.imwrite(str(outerpathdir / imgfilename), blended)'''
+
+        # the new image with more than one segmentation masks already in it
+        '''if invi_indx > 1:
+            img = cv2.imread(str(outerpathdir / imgfilename))
+        else:'''
+        #img = image_rgb  # original image, no masks. Set in fileLoc
+        #img = cv2.imread("C:/ohjelmointi/HobbyProjects/cctv-training/train/imgtest/onerun/China_Drone_000823_seg.png", cv2.IMREAD_UNCHANGED)
+
+
+        mask = masks_Data.data[0].cpu().numpy()
+        mask = (mask > 0.5).astype("uint8")
+        # colors based on the classname and rbg values
+        rgb_color = colors[res_val]
+        #colored_mask = img.copy()
+        #colored_mask[mask == 1] = rgb_color
+        #alpha = 1.0
+        overlay = np.zeros(
+            (mask.shape[0], mask.shape[1], 4),
+            dtype=np.uint8
+        )
+
+        overlay[mask == 1] = colors[res_val]
+        # img is 'old' image, colored_mask is where the 'new' img gets data added
+        # aka new image with old results in it
+        #blended = cv2.addWeighted(img, 1 - alpha, colored_mask, alpha, 0)
+        cv2.imwrite(str(outerpathdir / imgfilename), overlay)
 
 
 def count_yolo_classes(segann_path):

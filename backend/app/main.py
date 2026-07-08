@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     await shared_client_start()
     logmain()
     # start_timer()
-    # ml_backend()
+    #ml_backend()
     await open_pool()
     yield
     await shared_client_close()

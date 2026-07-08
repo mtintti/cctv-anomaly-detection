@@ -19,8 +19,8 @@ export default async function PredictionPage(){
      return(
         <div className="pt-5 pb-4 z-0">
             <ImageContainer stations={stationdata.features}/>
-            <div className="justify-center bg-red-50">
-            <div className="bg-gray-200 py-3 px-3 sm:my-3 md:my-8 md:mx-8 rounded-md inset-shadow-sm inset-shadow-gray-300 grid md:grid-cols-3">
+            <div className="pt-2 justify-center bg-red-50">
+            <div className="bg-gray-200 py-3 px-3 sm:my-3  rounded-md inset-shadow-sm inset-shadow-gray-300 grid md:grid-cols-3">
             <div className="col-span-2">
               <Image alt="predicted, segmented mask image showing found anomalities" preload={true} preload={true} width={800} height={800} src={predictedImage}/>
             </div>

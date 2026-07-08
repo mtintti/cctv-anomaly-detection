@@ -15,38 +15,58 @@ export default function ImageContainer({
   const [selectedStation, setSelectedStation] =
     useState<Station | null>(null);
 
+  const [selectedBaseId, setSelectedBaseId] = useState(null);
   const [result, setResult] = useState<any>(null);
-  const [prevCam, setprevCam] = useState("");
+  //const [prevCam, setprevCam] = useState("");
+  const content_tosend = [];
   let wanted_imgUrl = "";
 
-  async function submitHandler(station, selectedFile) {
+  //console.log("global selectedFile", selectedFile)
+  //console.log("global selectedStation", selectedStation)
+
+  async function submitHandler() {
     const formData = new FormData();
 
-    if (selectedFile) {
+    if (selectedFile != null) {
+        console.log("selectedFile", selectedFile);
       formData.append("file", selectedFile);
-      console.log("formdata, in file", formData)
+      //content_tosend.push(selectedFile)
     }
 
-    if (station) {
-        setprevCam(station)
-        if(station.includes(prevCam) == true && prevCam.length > 0){
-            const res = await fetch(`http://localhost:8000/camera/${prevCam}`);
+    if (selectedStation != null) {
+        console.log("why is station got??," , selectedStation)
+        console.log("base got, ", selectedBaseId)
+        //sessionStorage.setItem("prevCam", {selectedStation: selectedStation});
+        //let prevCam = sessionStorage.getItem("prevCam")
+        //prevCam = selectedStation;
+
+        //const currentStation = selectedStation;
+        if(selectedStation && selectedBaseId != null){
+            console.log(selectedStation, " -> ", selectedBaseId)
+            const res = await fetch(`http://localhost:8000/camera/${selectedBaseId}`);
             const camdata = await res.json();
             const camdata_arr =  Object.values(camdata.properties.presets);
+            console.log("camarr, ", camdata_arr)
+            console.log("current click, ", selectedStation)
             camdata_arr.forEach(function (x, i){
-            if(x.id.includes(station)){
+            if(x.id.includes(selectedStation)){
                 wanted_imgUrl = x.imageUrl;
+                //content_tosend.push(wanted_imgUrl)
+                formData.append("url", wanted_imgUrl);
                 console.log("clicked url, ", wanted_imgUrl)
              }
             }
           );
+
+        }  else {
+
         }
 
-
-      formData.append(
-        "urlname",
-        wanted_imgUrl
-      );
+    }
+    console.log("moving to form fetch content ", formData)
+    console.log(".. and its length", formData.length)
+    for(let i = 0; i < formData.length; i++){
+        console.log(formData[i])
     }
 
     const res = await fetch(
@@ -63,25 +83,29 @@ export default function ImageContainer({
   }
 
   return (
-    <div className="grid md:grid-cols-3 pl-4 sm:w-10 md:w-full gap-2">
+    <div className="grid grid-cols-3 pl-4 gap-4">
       <FormImage
         onFileSelect={(file) => {
           setSelectedFile(file);
-          console.log(file)
+          console.log("from formImage, ", file)
+          console.log("in formImage's selectedFile", selectedFile)
         }}
       />
           <ImageSearch
             stations={stations}
             selectedStation={selectedStation}
+            selectedBaseId={selectedBaseId}
+            onBaseSelect={(baseId) => {
+          setSelectedBaseId(baseId);}}
+
             onStationSelect={(station) => {
-              submitHandler(station)
+              setSelectedStation(station)
+              //submitHandler()
             }}
           />
-      <Link className="pr-2" href="/predict">
-          <button className="pt-1 justify-center text-white text-sm font-bold bg-indigo-400 w-18 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-300 shadow-sm shadow-indigo-500" onClick={submitHandler}>
+          <button className=" pt-1 justify-center text-white text-sm font-bold bg-indigo-400 w-18 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-300 shadow-sm shadow-indigo-500" onClick={submitHandler}>
             Submit
           </button>
-      </Link>
     </div>
   );
 }
