@@ -30,13 +30,13 @@ def reshape_combine_coeffprototype(segmasks_prototypes, coeffs, tensor_width, te
     masks = torch.einsum("nc, chw->nhw", coeffs, segmasks_prototypes)
     #print("shape of masks ", masks.shape)
     masks_sigmoid = torch.sigmoid(masks)
-    print("shape of masks_sigmid ", masks_sigmoid.shape)
-    print("original_img_w and original_img_h in reshape_combine_coeffs")
-    print(original_img_w, original_img_h)
+    #print("shape of masks_sigmid ", masks_sigmoid.shape)
+    #print("original_img_w and original_img_h in reshape_combine_coeffs")
+    #print(original_img_w, original_img_h)
 
     rescaled_mask = ultralytics.utils.ops.scale_masks(masks_sigmoid[None].float(), (original_img_h, original_img_w))
     rescaled_mask = rescaled_mask.squeeze(0) #removing the batch as our shape would be ( 1,N,W, H) otherwise
-    print(" shape of rescaled_mask ", rescaled_mask.shape)
+    #print(" shape of rescaled_mask ", rescaled_mask.shape)
 
     return rescaled_mask
 
@@ -58,9 +58,9 @@ def scale_coordinates_tensor_to_img(x_cord, y_cord, bboxw, bboxh, scale, pad):
     return p1tuple, p2tuple
 
 
-def color_and_draw_segmentation_bbox(cropped, all_colors, coords):
-    final_composed_images = []
-    print("cropped length ", len(cropped))
+def color_and_draw_segmentation_bbox(cropped, all_colors, coords, original_rgba, final_composed_images):
+    # was here final_composed_images = []
+    #print("cropped length ", len(cropped))
     for i in range(len(cropped)):
         cropped_invi = np.array(cropped[i])
         invidual_color = all_colors[i]
@@ -93,17 +93,17 @@ def color_and_draw_segmentation_bbox(cropped, all_colors, coords):
         rgba_check_overlay = overlay_segmentmask_image.getpixel(coordinate)
         if len(rgba_check_overlay) == 4 and len(rgba_check_original_pre) == 4:
             blended = Image.alpha_composite(overlay_bbox_image, overlay_segmentmask_image)
-            print("moved past combining both overlays")
+            #print("moved past combining both overlays")
         else:
             logger.error("in onnx_to_img length of overlay_seg or overlay_bbox is rgb instead of rgba")
-        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended)
+        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended, original_rgba=original_rgba)
         final_composed_images.append(addable)
         #return overlay_segmentmask_image, overlay_bbox_image, blended
 
     return final_composed_images
 
 
-def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image):
+def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image, final_composed_images):
 
     coords = []
     all_colors = []
@@ -111,7 +111,7 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
 
 
     for z in range(len(objects_found)):
-        print("in range objects_found ", objects_found[z])
+        #print("in range objects_found ", objects_found[z])
         x_cord = objects_found[z].x
         y_cord = objects_found[z].y
         bboxw = objects_found[z].w
@@ -128,8 +128,9 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
         all_colors.append(rgb_color)
 
     #print("coeffs ", finalised_coeffs.shape, " prototypes ", segmasks_prototypes.shape)
-    print("moving to reshape_combined ")
-    print(" ")
+
+    #print("moving to reshape_combined ")
+    #print(" ")
     final_mask_probs = reshape_combine_coeffprototype(segmasks_prototypes=segmasks_prototypes, coeffs=finalised_coeffs,
                                                       tensor_width=512, tensor_height=512,
                                                       original_img_w=original_img_w, original_img_h=original_img_h,
@@ -140,7 +141,8 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
 
     bbox_coords_as_tensor = torch.as_tensor(coords)
     bbox_coords_as_tensor= bbox_coords_as_tensor.reshape(len(coords), 4)
-    print("shape of bbox coords ", bbox_coords_as_tensor.shape)
+    #print("shape of bbox coords ", bbox_coords_as_tensor.shape)
+
     #print("finalmaskprops ", final_mask_probs.shape)
     cropped = ultralytics.utils.ops.crop_mask(final_mask_probs, bbox_coords_as_tensor)
     #print("cropped ", cropped.shape)
@@ -149,7 +151,7 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
     all_colors = np.array(all_colors)
     #print("colors of classess ", all_colors.shape)
     #seg_overlay, bbox_overlay, blended_together = color_and_draw_segmentation_bbox(cropped=cropped, all_colors=all_colors,coords=coords)
-    final_composed_images = color_and_draw_segmentation_bbox(cropped=cropped, all_colors=all_colors, coords=coords)
+    final_composed_images = color_and_draw_segmentation_bbox(cropped=cropped, all_colors=all_colors, coords=coords, original_rgba=original_image, final_composed_images=final_composed_images)
     return final_composed_images
 
 
@@ -159,6 +161,7 @@ def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original
     conf_to_pass = 0.10
     passedboxs = []
     passedcoeffs = []
+    final_composed_images = []
 
     #koska kaikki boxes on prunattu mns kautta, poistaen löydöt jotka ovat 60% tai enemmän limittäin,
     # loopataan boxes löydöt tarkistaen että mallin luokan numeron ennustettun tulos on tarpeeksi isompi kuin 10% (conf_to_pass)
@@ -175,27 +178,36 @@ def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original
                 name = names[classname_id]
                 passedboxs.append(boxes[indx])
                 passedcoeffs.append(coeff_masks[indx])
-                print("passedboxs  and passedcoeffs length ")
-                print(len(passedboxs), len(passedcoeffs))
+                #print("passedboxs  and passedcoeffs length ")
+                #print(len(passedboxs), len(passedcoeffs))
 
-                toadd = FoundOnnxObject(index=indx, x=x_cord, y=y_cord, w=bboxw, h=bboxh, confidence_score=object_prop_score,
+                toadd = FoundOnnxObject(index=len(objects_found)+1, x=x_cord, y=y_cord, w=bboxw, h=bboxh, confidence_score=object_prop_score,
                                         class_id=classname_id, class_name=name, original_image_w=original_img_w, original_image_h=original_img_h, scale=scale, pad=pad)
-                print("next is to add for ", indx)
-                print(" ")
-                print(toadd)
+                #print("next is to add for " )
+                #print(" ")
+                #print(toadd)
                 objects_found.append(toadd)
-                print("info appended to objects found ", len(objects_found))
+                #print("info appended to objects found ", len(objects_found))
         indx += 1
 
-    print("past loop boxes in onnx_to_img ", len(objects_found))
-    finalised_boxes = np.array(passedboxs)
-    finalised_coeffs = np.array(passedcoeffs)
-    print("finalised boxes and coeffs shape ", finalised_boxes.shape, " ", finalised_coeffs.shape)
-    original_image_RGBA = original_image.convert('RGBA')
-    #overlay_seg, overlay_bbox, blended_together = arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA)
-    final_composed_images = arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA)
-    print(" ")
-    print("original_image_rgba is present? ", original_image_RGBA, " original rgb ", original_image)
+    #print("past loop boxes in onnx_to_img ", len(objects_found))
+    if len(passedboxs) > 0:
+        finalised_boxes = np.array(passedboxs)
+        finalised_coeffs = np.array(passedcoeffs)
+        #print("finalised boxes and coeffs shape ", finalised_boxes.shape, " ", finalised_coeffs.shape)
+        original_image_RGBA = original_image.convert('RGBA')
+        #overlay_seg, overlay_bbox, blended_together = arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA)
+        final_composed_images = arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
+        #print(" ")
+        #print("original_image_rgba is present? ", original_image_RGBA, " original rgb ", original_image)
 
-    #return overlay_seg, overlay_bbox, blended_together, original_image_RGBA
-    return final_composed_images, original_image_RGBA
+        #return overlay_seg, overlay_bbox, blended_together, original_image_RGBA
+        return final_composed_images, original_image_RGBA
+    else:
+        print("--- !!")
+        print("No predictions found!! ", len(passedboxs) , len(passedcoeffs))
+        original_image_none = original_image.convert('RGBA')
+        addable_nonFound = FinalImagesObject(index=len(objects_found)+1, overlay_seg=None, overlay_bbox=None,
+                                    blended_together=None, original_rgba=original_image_none)
+        final_composed_images.append(addable_nonFound)
+        return final_composed_images, original_image_none

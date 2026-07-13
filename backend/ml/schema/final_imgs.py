@@ -8,6 +8,7 @@ from dataclasses import dataclass
 @dataclass
 class FinalImagesObject:
     index: int
-    overlay_seg: Image.Image
-    overlay_bbox: Image.Image
-    blended_together: Image.Image
+    overlay_seg: Image.Image | None
+    overlay_bbox: Image.Image | None
+    blended_together: Image.Image | None
+    original_rgba: Image.Image | None
