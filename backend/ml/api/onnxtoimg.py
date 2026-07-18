@@ -1,3 +1,4 @@
+import asyncio
 
 import numpy as np
 import torch
@@ -155,7 +156,7 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
     return final_composed_images
 
 
-def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found):
+async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found):
 
     indx = 0
     conf_to_pass = 0.10
@@ -197,7 +198,7 @@ def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original
         #print("finalised boxes and coeffs shape ", finalised_boxes.shape, " ", finalised_coeffs.shape)
         original_image_RGBA = original_image.convert('RGBA')
         #overlay_seg, overlay_bbox, blended_together = arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA)
-        final_composed_images = arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
+        final_composed_images = await asyncio.to_thread(arrange_full_segmentation_mask, objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
         #print(" ")
         #print("original_image_rgba is present? ", original_image_RGBA, " original rgb ", original_image)
 

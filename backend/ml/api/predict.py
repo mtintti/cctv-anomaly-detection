@@ -1,6 +1,15 @@
+import asyncio
 import base64
+import concurrent.futures
 import time
+from asyncio import as_completed
+from concurrent.futures.process import ProcessPoolExecutor
+from concurrent.futures.thread import ThreadPoolExecutor
+from sys import exc_info
+from typing import Tuple
 
+import PIL.Image
+import httpx
 import numpy as np
 import onnxruntime
 import requests
@@ -10,7 +19,7 @@ from io import BytesIO
 import torch
 import torchvision.ops as ops
 from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException
-from requests import Session
+from pydantic import TypeAdapter
 
 from backend.app.config import logger, loggercrier
 from backend.ml.api.letterboxing import letterbox, ImgSize
@@ -19,7 +28,7 @@ from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predic
 
 router = APIRouter()
 sess = onnxruntime.InferenceSession(
-    'C:/ohjelmointi/HobbyProjects/cctv-anomaly-detection/runs/segment/model_v9/weights/best.onnx')
+    'backend/ml/best.onnx')
 
 allowed_types = {'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'JPEG', 'PNG'}
 max_size_allowed = 1024 * 1024 *25 #24mb
@@ -47,27 +56,21 @@ async def filecheck(f, req, size = None):
 
     return f
 
-async def url_change_to_img(invi_url,indx_for_url, req, s):
-    '''if indx_for_url != len(url):
-        print("invi_url ", invi_url)
-        print("index_for ", indx_for_url, ", url length: ", len(url))
-        all_urls.append(invi_url)
-        print("length of all_urls ", len(all_urls))
-        bytes_from_img = None
-        return bytes_from_img
+async def url_change_to_img(indx_for_url, req, url, client:httpx.AsyncClient, batchres):
 
-    if indx_for_url == len(url):
-        all_urls.append(invi_url)
-        print("length of all_urls ", len(all_urls))
-        for u in all_urls:'''
+    async def checkimg(res):
+        checked_img = await filecheck(res.headers["Content-Type"], req, res.headers["Content-Length"])
+        bytes_from_checkedimg = res.content
+        return bytes_from_checkedimg
 
-    res = s.get(invi_url, timeout=10)
-    #res = requests.get(invi_url, stream=True, timeout=10)
-    checked_img = await filecheck(res.headers["Content-Type"], req, res.headers["Content-Length"])
-    bytes_from_checkedimg = res.content
+
+    if indx_for_url == 1:
+        for u in url:
+            #print("in async client loop for ", u)
+            batchres.append(await client.get(u))
+
+    bytes_from_checkedimg = await checkimg(batchres[indx_for_url -1])
     return bytes_from_checkedimg
-
-
 
 
 async def image_process(bytes_from_img):
@@ -99,13 +102,11 @@ async def image_process(bytes_from_img):
         ml_inference_log.append((time.perf_counter() - start) * 1000)
         return changed, test_image, original_img_w, original_img_h, scale, pad
     except Exception:
-        logger.expection("error in image_proccess, /predict: ", exc_info=True)
+        loggercrier.expection("error in image_proccess, /predict: ", exc_info=True)
 
 
-
-def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found):
+async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found):
     global classname_id
-    start = time.perf_counter()
 
     input = sess.get_inputs()[0].name
     out_all = [output_invi.name for output_invi in sess.get_outputs()]
@@ -140,33 +141,121 @@ def get_predictions(data, original_image, original_img_w, original_img_h, scale,
     segmasks_prototypes = output1
 
     #overlay_seg, overlay_bbox, blended_together, original_image_RGBA = onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad)
-    final_composed_images, original_image_to_use = onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found)
+    #final_composed_images, original_image_to_use = onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found)
+    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found)
     ml_inference_log.append((time.perf_counter() - start_decodeimg) * 1000)
     return final_composed_images, original_image_to_use
+
+
+async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img):
+
+        logger.info(("length of final_composed_images ", len(final_composed_images)))
+        start_batchlist = time.perf_counter()
+        #final_bytes_to_resOrig = encode_image(orig)
+
+        for z in range(len(final_composed_images)):
+            invidual = final_composed_images[z]
+            if (invidual.overlay_seg != None):
+                segmask = invidual.overlay_seg
+                #final_bytes_to_resSeg = encode_image(segmask)
+
+                bbox = invidual.overlay_bbox
+                #final_bytes_to_resBbox = encode_image(bbox)
+
+                confidencescore = objects_found[z].confidence_score
+                class_id = objects_found[z].class_id
+                class_name = objects_found[z].class_name
+
+                predictions = Inviprediction(imageBbox=None, imageSeg=None)
+                details = Predictiondetails(class_id=class_id, class_name=class_name,
+                                                confidence_score=confidencescore)
+                constructed = JsonResponse(belongsto=belongto_name, original_img=encoded_original_img,
+                                               details=[details],
+                                               prediction=[predictions])
+                batchlist.append(((bbox), (segmask), constructed))
+                #json_response_all.append(constructed)
+                #logger.info(("length of batchlist ", len(batchlist)))
+
+            else:
+                logger.info("skipped showing, results were none")
+                predictions = Inviprediction(imageBbox=None, imageSeg=None)
+                details = Predictiondetails(class_id=None, class_name=None, confidence_score=None)
+                constructed = JsonResponse(belongsto=belongto_name, original_img=encoded_original_img,
+                                           details=[details],
+                                           prediction=[predictions])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
+                #json_response_all.append(constructed)
+                batchlist.append(constructed)
+            logger.debug(("length of batchlist ", len(batchlist)))
+
+        timefromstart_batchlist = (time.perf_counter() - start_batchlist) * 1000
+        ml_inference_log.append(timefromstart_batchlist)
+
+def encode_image(image_tochange):
+        buffer_touse = BytesIO()
+        image_tochange.save(buffer_touse, format="PNG")
+        changedto_Bytes = buffer_touse.getvalue()
+        encoded_orig = base64.b64encode(changedto_Bytes)
+        final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded_orig
+        return final_bytes_to_encoded_png
+
+async def encodeimagetojson(batchlist, json_response_all, item: str | UploadFile):
+    try:
+
+        for l in batchlist:
+                if type(l) == tuple:
+
+                    final_bytes_to_resBbox, final_bytes_to_resSeg = await asyncio.gather(
+                        asyncio.to_thread(encode_image, l[0]), asyncio.to_thread(encode_image, l[1]))
+
+                    l[2].prediction[0].imageBbox = final_bytes_to_resBbox
+                    l[2].prediction[0].imageSeg = final_bytes_to_resSeg
+
+
+                    #print("new")
+                    #print(l[2].prediction)
+                    # details = Predictiondetails()
+                    constructed = l[2]
+                    json_response_all.append(constructed)
+
+                else:
+                    json_response_all.append(l)
+
+                    # print("lenght of json ",len(json_response_all))
+                    # batchlist.append(constructed)
+
+        # logger.debug(("length of json_responce ", len(json_response_all)))
+
+    except Exception:
+        loggercrier("encoding image failed! ", exc_info=True)
 
 
 
 @router.post("/predict")
 async def get_prediction(req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[])): #file: UploadFile = File(...),
+
     try:
 
         toprocess = []
         json_response_all = []
+        batchres = []
+        batchlist = []
+        encode_list = []
         print("files received:", [f.filename for f in file])
         print("urls received:", url)
         indx_for_url = 0
-        print("cleared? ml_log ", len(ml_inference_log), " toprocess ", len(toprocess)) #" objects_found ", len(objects_found), "
+        print("cleared? ml_log ", len(ml_inference_log), " toprocess ",
+              len(toprocess))  # " objects_found ", len(objects_found), "
         belongto_name = "name"
+        client = httpx.AsyncClient()
 
         for u in url:
             toprocess.append(u)
-            print("adding ", u , " ", len(toprocess))
+            print("adding ", u, " ", len(toprocess))
         for f in file:
             toprocess.append(f)
             print("adding ", f, " ", len(toprocess))
 
-        logger.info("final toprocess length", len(toprocess))
-        s = requests.Session()
+        logger.info(("final toprocess length", len(toprocess)))
 
         start_wholerun = time.perf_counter()
         for item in toprocess:
@@ -177,9 +266,11 @@ async def get_prediction(req: Request, file: list[UploadFile] = File(default=[])
                 filebool = await filecheck(item, req)
                 bytes_from_img = await filebool.read()
             elif type(item) == str:
-                    belongto_name = item
-                    indx_for_url += 1
-                    bytes_from_img = await url_change_to_img(item, indx_for_url, req, s)
+                belongto_name = item
+                indx_for_url += 1
+                # async with httpx.AsyncClient() as client:
+                bytes_from_img = await url_change_to_img(indx_for_url, req, url, client, batchres)
+                # logger.info(("type of bytes from img ", type(bytes_from_img)))
             else:
                 # file is not processable, as it is not a file or a url
                 logger.info("to_process is not a file or a url. from main_prediction_loop ", exc_info=True)
@@ -195,77 +286,66 @@ async def get_prediction(req: Request, file: list[UploadFile] = File(default=[])
             original_img_h = reswith_width_height[3]
             scale = reswith_width_height[4]
             pad = reswith_width_height[5]
-            final_composed_images, original_image_to_use = get_predictions(res, original_image, original_img_w,
-                                                                             original_img_h, scale, pad, objects_found)
+            # final_composed_images, original_image_to_use = get_predictions(res, original_image, original_img_w,
+            #                                                                 original_img_h, scale, pad, objects_found)
+            final_composed_images, original_image_to_use = await get_predictions(res, original_image,
+                                                                                   original_img_w, original_img_h,                                                              scale, pad, objects_found)
+            # print(item_indx, len(toprocess))
 
-            logger.info("final_composed_images length ", len(final_composed_images))
-            start_encode = time.perf_counter()
-            orig = original_image_to_use
-            bufferorig = BytesIO()
-            orig.save(bufferorig, format="PNG")
-            origBytes = bufferorig.getvalue()
-            encoded_orig = base64.b64encode(origBytes)
-            final_bytes_to_resOrig = b'data:image/png;base64,' + encoded_orig
-            for z in range(len(final_composed_images)):
-                invidual = final_composed_images[z]
-                index = invidual.index
-                if(invidual.overlay_seg != None):
-                    segmask = invidual.overlay_seg
-                    buffer = BytesIO()
-                    segmask.save(buffer, format="PNG")
-                    segmaskBytes = buffer.getvalue()
-                    encoded_seg = base64.b64encode(segmaskBytes)
-                    final_bytes_to_resSeg = b'data:image/png;base64,' + encoded_seg
+             #JsonResponse.original_img = encoded
+            #print(type(encoded))
+            #print(encoded)
+            start_originalencode = time.perf_counter()
+            encoded = await asyncio.to_thread(encode_image, original_image_to_use)
+            timefromstart_originalencode = (time.perf_counter() - start_originalencode) * 1000
 
-                    bbox = invidual.overlay_bbox
-                    bufferbbox = BytesIO()
-                    bbox.save(bufferbbox, format="PNG")
-                    bboxBytes = bufferbbox.getvalue()
-                    encoded_bbox = base64.b64encode(bboxBytes)
-                    final_bytes_to_resBbox = b'data:image/png;base64,' + encoded_bbox
+            await batchlist_encode(belongto_name, objects_found, final_composed_images, item,
+                                   batchlist, encoded)
 
-                    confidencescore = objects_found[z].confidence_score
-                    class_id = objects_found[z].class_id
-                    class_name = objects_found[z].class_name
-                    predictions = Inviprediction(imageBbox=final_bytes_to_resBbox,imageSeg=final_bytes_to_resSeg)
-                    details = Predictiondetails(class_id=class_id, class_name=class_name,confidence_score=confidencescore)
-                    constructed = JsonResponse(belongsto=belongto_name, original_img=final_bytes_to_resOrig, details=[details], prediction=[predictions])  #{'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
-                    json_response_all.append(constructed)
+        logger.info(("final batchlist length ", len(batchlist)))
 
+        start_encode = time.perf_counter()
+        await encodeimagetojson(batchlist, json_response_all, item)
+        timefromstart_encode = (time.perf_counter() - start_encode) * 1000
 
-                else:
-                    logger.info("skipped showing, results were none")
-                    predictions = Inviprediction(imageBbox=None, imageSeg=None)
-                    details = Predictiondetails(class_id=None, class_name=None, confidence_score=None)
-                    constructed = JsonResponse(belongsto=belongto_name, original_img=final_bytes_to_resOrig,details=[details], prediction=[predictions])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
-                    json_response_all.append(constructed)
-
-            timefromstart_encode = (time.perf_counter() - start_encode) * 1000
-            appendable_encode = (timefromstart_encode, item)
-            ml_inference_log.append(appendable_encode)
-
-        #final metrics after all images are shown
+        # final metrics after all images are shown
+        ta = TypeAdapter(JsonResponse)
+        # print(ta)
+        # print(json_response_all[0])
+        # res = ta.validate_python(json_response_all)
+        # print(res)
+        sendable = ta.dump_json(json_response_all)
+        # print(sendable)
         ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
 
         sentence = ["file/img handling(filecheck&file.read()/url-to-img)", "img preprocess to tensor",
-                                    "onnx session's Inference time", "results made to bbox and segmask", "encodeded to response for <img> tag"]
+                    "onnx session's Inference time", "results made to bbox and segmask"," once per det original image encode", "batchlisting items"]
         for z, value in enumerate(ml_inference_log[:-1]):
             if type(value) == tuple:
-                print(f"{sentence[z % 5]} {value[0]:.2f} ms for item " , value[1])
+                print(f"{sentence[z % 6]} {value[0]:.2f} ms for item ", value[1])
             else:
-                print(f"{sentence[z % 5]} {value:.2f} ms")
-
+                print(f"{sentence[z % 6]} {value:.2f} ms")
+        print(f"encodeded to response for <img> tag {timefromstart_encode:.2f} ms")
         print("--- fin ---")
         print(f"Whole run's time {ml_inference_log[-1]:.2f} ms")
-        print("all responses ", len(json_response_all))
-        print("internal data, and debug: size ml_log ", len(ml_inference_log), " objects_found ", len(objects_found))
+        print("all responses for final JSON ", len(json_response_all))
+        print("internal lists, and debug: size ml_log ", len(ml_inference_log), " objects_found ", len(objects_found))
         print("")
         ml_inference_log.clear()
         objects_found.clear()
         toprocess.clear()
         json_response_all.clear()
-        print("cleared ml_log ", len(ml_inference_log), " objects_found ", len(objects_found), " toprocess ",
-                    len(toprocess), " all resposes ", len(json_response_all))
+        print("internal lists, cleared ml_log ", len(ml_inference_log), " objects_found ", len(objects_found),
+              " toprocess ",
+              len(toprocess), " all responses for final JSON ", len(json_response_all))
+        return sendable
 
     except Exception:
         loggercrier.error("error in /predict: ", exc_info=True)
+
+        #futures = processPool.map(task, [req], [file], [url], chunksize=4)
+        '''response = loop.run_in_executor(processPool, task,req, file, url)
+        print(type(response))
+        print(response.)'''
+
+
