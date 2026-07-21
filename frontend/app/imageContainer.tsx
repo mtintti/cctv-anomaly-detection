@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
 import FormImage from "./form-component";
 import ImageSearch from "./cctvImageSearch";
 
 export default function ImageContainer({
   stations,
+  result
 }) {
   const [selectedFile, setSelectedFile] =
     useState<File | null>(null);
@@ -16,13 +18,8 @@ export default function ImageContainer({
     useState<Station | null>(null);
 
   const [selectedBaseId, setSelectedBaseId] = useState(null);
-  const [result, setResult] = useState<any>(null);
-  //const [prevCam, setprevCam] = useState("");
   const content_tosend = [];
   let wanted_imgUrl = "";
-
-  //console.log("global selectedFile", selectedFile)
-  //console.log("global selectedStation", selectedStation)
 
   async function submitHandler() {
     const formData = new FormData();
@@ -30,17 +27,12 @@ export default function ImageContainer({
     if (selectedFile != null) {
         console.log("selectedFile", selectedFile);
       formData.append("file", selectedFile);
-      //content_tosend.push(selectedFile)
     }
 
     if (selectedStation != null) {
         console.log("why is station got??," , selectedStation)
         console.log("base got, ", selectedBaseId)
-        //sessionStorage.setItem("prevCam", {selectedStation: selectedStation});
-        //let prevCam = sessionStorage.getItem("prevCam")
-        //prevCam = selectedStation;
 
-        //const currentStation = selectedStation;
         if(selectedStation && selectedBaseId != null){
             console.log(selectedStation, " -> ", selectedBaseId)
             const res = await fetch(`http://localhost:8000/camera/${selectedBaseId}`);
@@ -51,7 +43,6 @@ export default function ImageContainer({
             camdata_arr.forEach(function (x, i){
             if(x.id.includes(selectedStation)){
                 wanted_imgUrl = x.imageUrl;
-                //content_tosend.push(wanted_imgUrl)
                 formData.append("url", wanted_imgUrl);
                 console.log("clicked url, ", wanted_imgUrl)
              }
@@ -74,13 +65,24 @@ export default function ImageContainer({
       {
         method: "POST",
         body: formData,
-      }
+      }, {cache: 'force-store'}
     );
 
     const data = await res.json();
-    console.log(data)
 
-    setResult(data);
+    console.log(typeof(data))
+
+    console.log(data.predict_id)
+    var predict_id = data.predict_id
+    const byteSize = (str) => new Blob([str]).size;
+    console.log(byteSize(data))
+
+
+
+    if(predict_id){
+        redirect(`/predict/${predict_id}`)
+    }
+
   }
 
   return (
@@ -101,7 +103,6 @@ export default function ImageContainer({
 
             onStationSelect={(station) => {
               setSelectedStation(station)
-              //submitHandler()
             }}
           />
           <button className=" pt-1 justify-center text-white text-sm font-bold bg-indigo-400 w-18 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-300 shadow-sm shadow-indigo-500" onClick={submitHandler}>

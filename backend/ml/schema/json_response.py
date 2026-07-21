@@ -1,6 +1,5 @@
-from PIL.Image import Image
-from pydantic import BaseModel, field_serializer
-
+import uuid
+from pydantic import BaseModel
 
 class Inviprediction(BaseModel):
     imageBbox: str | None
@@ -17,8 +16,7 @@ class JsonResponse(BaseModel):
     details: list[Predictiondetails]
     prediction: list[Inviprediction]
 
-    @field_serializer('original_img', when_used='json-unless-none')
-    def lyhenna_tuloste(self, v: str) -> str:
-        if len(v) > 30:
-            return f"{v[:30]}...{v[-30:]}"
-        return v
+class PredictID(BaseModel):
+    predict_id: uuid.UUID
+    jsonresponse: list[JsonResponse]
+

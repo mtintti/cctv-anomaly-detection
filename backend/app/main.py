@@ -1,22 +1,18 @@
-import httpx
-from fastapi import FastAPI
+import uuid
+
+from fastapi import FastAPI, Request
 from starlette.middleware.cors import CORSMiddleware
 
 from .api import camera, stations
-from ..ml.api.predict import router
-from .config import logmain, logger, loggercrier
+from ..ml.api.predict import router, get_prediction, prediction_processing
+from .config import logmain, logger
 from .dependecies import shared_client_start, shared_client_close
 from contextlib import asynccontextmanager
-from fastapi.responses import HTMLResponse
 from .services.db.database import open_pool
-from ..ml.segmentation.datasetPreparation.segmentation import ml_backend
-from .schedules.scheduleAPI import start_timer
-
 
 # client (httpx.AsyncClient) on laitettuna alkamaan kun appi alkaa,
 # yield (stop) tapahtuu kun appi suljetaan. contextmanager:illa hallitaan lifecycle clientillä myöhemmin data injectionilla  (testit, docker?)
 # Clientti jaetaan services/dependency.py:sta läpi projektin
-app_state = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,14 +38,30 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],  all
 async def root():
     return {"message" : "hello, scaling our app upwards!!! hey from new one"}
 
-@app.post("/startup_req")
 async def warmup_request():
-    try:
-        client = httpx.AsyncClient
-        image_url_content = []
-        image_url_content.append('https://weathercam.digitraffic.fi/C1255902.jpg')
-        response = await client.post('http://localhost:8000/predict', image_url_content)
-        logger.info((type(response)))
-        logger.info("warmup request to /predict sent ")
-    except Exception:
-        loggercrier.error("warmup error, ", exc_info=True)
+        try:
+            scope = {
+                "type": "http",
+                "method": "POST",
+                "path": "/predict",
+                "headers": [(b"host", b"app.local")]
+            }
+            mock_request = Request(scope=scope)
+
+            prewarm_urls = [
+                'https://weathercam.digitraffic.fi/C1255902.jpg']
+
+            '''
+            response = await prediction_processing(
+                generated_predictID=uuid.uuid4(),
+                req=mock_request,
+                file=[],
+                url=prewarm_urls
+            )
+
+            logger.info(f"prewarm is successful! returned data: {response}")
+            '''
+            logger.info("prewarm is paused")
+
+        except Exception:
+            logger.error("Warmup error, ", exc_info=True)
