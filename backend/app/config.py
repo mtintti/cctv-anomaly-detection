@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     db_pass: str
     db_host: str
     db_port: str
+    redishost: str
+    redisport: str
+    redisusername: str
+    redispassword: str
     desktop: str
     desktop_ann: str
     outerfile: str
