@@ -1,10 +1,11 @@
 import uuid
 
 from fastapi import FastAPI, Request
+from fastapi_taskflow import TaskAdmin
 from starlette.middleware.cors import CORSMiddleware
 
 from .api import camera, stations
-from ..ml.api.predict import router, get_prediction, prediction_processing
+from ..ml.api.predict import router, get_prediction, prediction_processing, task_manager
 from .config import logmain, logger
 from .dependecies import shared_client_start, shared_client_close
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+TaskAdmin(app, task_manager)
 app.include_router(camera.router)
 app.include_router(stations.router)
 app.include_router(router)

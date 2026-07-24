@@ -10,16 +10,20 @@ from PIL import Image
 from io import BytesIO
 import torch
 import torchvision.ops as ops
-from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException, BackgroundTasks, Response, status, \
+    Header, Depends
+from fastapi_taskflow import TaskManager
 from pydantic import TypeAdapter
-from redis.commands.search.query import Query
 
 from backend.app import settings
 from backend.app.config import logger, loggercrier
+
 from backend.ml.api.letterboxing import letterbox, ImgSize
 from backend.ml.api.onnxtoimg import onnx_to_img
 from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID
 import redis
+
+task_manager = TaskManager()
 
 # Redis Client yhteyden tiedot, specifidattu settings:in kautta
 r = redis.Redis(host=settings.redishost, port=settings.redisport, username=settings.redisusername, password=settings.redispassword)
@@ -103,7 +107,7 @@ async def image_process(bytes_from_img):
     except Exception:
         loggercrier.expection("error in image_proccess, /predict: ", exc_info=True)
 
-
+# Onnx model inference, gotten api image has been changed to tensor input format, letterboxed to 512x512 w x h. Def preforms inference on onnx model, NMS pruning and passes the data to further composition.
 async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found):
     global classname_id
 
@@ -146,7 +150,7 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
     return final_composed_images, original_image_to_use
 
 #batclist_encodessa laitetaan löytöjen jsonmeta data (confidence_score, class_id ja belongsto..) Itse kuvat laitetaan tuple:een (bbox, segment, json_response)
-async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID):
+async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID, original_img_w: int, original_img_h: int):
 
         logger.info(("length of final_composed_images ", len(final_composed_images)))
         start_batchlist = time.perf_counter()
@@ -163,30 +167,29 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                 confidencescore = objects_found[z].confidence_score
                 class_id = objects_found[z].class_id
                 class_name = objects_found[z].class_name
-                print("encoded original ", type(encoded_original_img))
-
+                #print("encoded original ", type(encoded_original_img))
+                #print("img_w ", original_img_w, " img_h ", original_img_h)
+                #print("types, ", type(original_img_w), type(original_img_h))
 
                 predictions = Inviprediction(imageBbox=None, imageSeg=None)
                 details = Predictiondetails(class_id=class_id, class_name=class_name,
                                                 confidence_score=confidencescore)
-                jsonresponse = JsonResponse(belongsto=belongto_name, original_img=None,
+                jsonresponse = JsonResponse(belongsto=belongto_name, original_img=None, img_w=original_img_w, img_h=original_img_h,
                                                details=[details],
                                                prediction=[predictions])
                 constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse])
                 batchlist.append(((bbox), (segmask), constructed))
-                #json_response_all.append(constructed)
-                #logger.info(("length of batchlist ", len(batchlist)))
 
             else:
                 logger.info("skipped showing, results were none")
                 predictions = Inviprediction(imageBbox=None, imageSeg=None)
                 details = Predictiondetails(class_id=None, class_name=None, confidence_score=None)
-                jsonresponse = JsonResponse(belongsto=belongto_name, original_img=None,
+                jsonresponse = JsonResponse(belongsto=belongto_name, original_img=None, img_w=original_img_w, img_h=original_img_h,
                                            details=[details],
                                            prediction=[predictions])
                 constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
                 #json_response_all.append(constructed)
-                print("constructed none path, ", constructed)
+                #print("constructed none path, ", constructed)
                 batchlist.append(constructed)
             logger.debug(("length of batchlist ", len(batchlist)))
 
@@ -197,7 +200,7 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
 def encode_image(image_tochange):
         #PIL.Image.Image muutetaan png byteksi
         buffer_touse = BytesIO()
-        print("imgage_tochange type ", type(image_tochange))
+        #print("imgage_tochange type ", type(image_tochange))
         image_tochange.save(buffer_touse, format="PNG")
         changedto_Bytes = buffer_touse.getvalue()
         encoded_orig = base64.b64encode(changedto_Bytes)
@@ -212,22 +215,10 @@ async def encodeimageto_redis_json(batchlist, json_response_all, item: str | Upl
             redisindex = uuid.uuid4()
             logger.info(("redisuuid is encodeimagetojson ", redisindex))
             if type(l) == tuple:
-                print("just l, ", l)
-                print("what we want?? ", l[2])
 
                 final_bytes_to_resBbox, final_bytes_to_resSeg = await asyncio.gather(
                     asyncio.to_thread(encode_image, l[0]), asyncio.to_thread(encode_image, l[1]))
-                print("")
-                print("final image bbox and seg are changed")
-                print(type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
-                print("first ten chars in both")
-                print(final_bytes_to_resBbox[:80])
-                print(final_bytes_to_resSeg[:80])
-                print("final original image")
-                print(type(encoded_original))
-                print("first ten chars in original")
-                print(encoded_original[:80])
-                print("")
+
                 try:
                     r.ft(f"img:{generated_predictID}:{redisindex}").dropindex(True)
                     logger.info("index was dropped in redis, was there already")
@@ -260,14 +251,7 @@ async def encodeimageto_redis_json(batchlist, json_response_all, item: str | Upl
                     l[2].jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                     l[2].jsonresponse[0].prediction[0].imageBbox = f"img:{generated_predictID}:{redisindex}:bbox"
                     l[2].jsonresponse[0].prediction[0].imageSeg = f"img:{generated_predictID}:{redisindex}:segmask"
-                    print("type of l[0]", type(l[0]))
-                    print("full l[0]", l[0])
-                    print("jsonresponse img contains ", l[2].jsonresponse[0].original_img)
-                    print("imagebbox contains ", l[2].jsonresponse[0].prediction[0].imageBbox)
 
-                    #print("new")
-                    #print(l[2].prediction)
-                    # details = Predictiondetails()
                     constructed = l[2]
                     json_response_all.append(constructed)
 
@@ -276,39 +260,61 @@ async def encodeimageto_redis_json(batchlist, json_response_all, item: str | Upl
                 imgset = r.set(f"img:{generated_predictID}:{redisindex}:original", encoded_original, ex=240)
                 logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
-                print("one original, results are none ", l.jsonresponse[0].original_img)
                 json_response_all.append(l)
 
 
     except Exception:
         loggercrier("encoding image failed! ", exc_info=True)
 
+
+@router.get("/tasks")
+def task_status(task_id: uuid.UUID):
+    record = task_manager.store.get(str(task_id))
+    print("record /tasks", record)
+    if record is None:
+        raise HTTPException(status_code=404)
+    return {"status": record.status.value, "error": record.error}
+
 ## by id work, used by server component to get prediction_processing returned json.
 # Json prediction sisältää bbox ja segmask Redis urlit, (img:{predict_id}:{redisindex}:haluttukuva)
-@router.get("/predict/{predict_id}")
-async def request_results(predict_id:uuid.UUID):
+@router.get("/predict/{predict_id}/{task_id_by_manager}")
+async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, response: Response):
     found = None
     try:
         found = r.get(f"json_meta:{predict_id}:json")
     except redis.exceptions.ResponseError:
         logger.info("no redis index already present")
 
+    print("task_id received ", task_id_by_manager)
+    record_by_id_of_task = task_status(task_id_by_manager)
+
     if found is None:
-        return {"none found" : predict_id}
+
+        if record_by_id_of_task is None:
+            response.status_code = status.HTTP_404_NOT_FOUND
+            print("record by id ", record_by_id_of_task)
+            print("record by id ", record_by_id_of_task)
+            return {"none found" : predict_id, "records status" : record_by_id_of_task}
+        else:
+            response.status_code = status.HTTP_201_CREATED
+            return {"Retry-After:": 10, "record by id of task":record_by_id_of_task}
+
     else:
-        print("found json_meta in redis")
-        print(found)
-        print(type(found))
-        return found
+        #print("found json_meta in redis")
+        #print(found)
+        #print(type(found))
+        record_by_id_of_task = task_manager.store.get(task_id_by_manager)
+        response.status_code = status.HTTP_200_OK
+        return {"found":found, "record by id of task":record_by_id_of_task}
 
 # haetaan redis predict_id indexissä olevat original, bbox ja segmask kuva bytes, jos indexiä ei ole palautetaan json none found.
 @router.post("/predict/{predict_id}")
-async def request_results(predict_id:uuid.UUID, redisURL: list[str] = Form(default=[])):
+async def request_results(predict_id:uuid.UUID, response: Response, redisURL: list[str] = Form(default=[])):
     try:
         logger.info("redis_URL gotten ")
-        print("predict_id, ", predict_id," ", redisURL)
-        for re in redisURL:
-            print("redisURLS recived ", re)
+        #print("predict_id, ", predict_id," ", redisURL)
+        #for re in redisURL:
+            #print("redisURLS recived ", re)
         original_redisURL = redisURL[0]
         bbox_redisURL = redisURL[1]
         seg_redisURL = redisURL[2]
@@ -328,6 +334,7 @@ async def request_results(predict_id:uuid.UUID, redisURL: list[str] = Form(defau
             logger.info("no redis index already present")
 
         if found_Orig is None or found_Bbox is None or found_Seg is None:
+            response.status_code = status.HTTP_206_PARTIAL_CONTENT
 
             return {
                 "none found" : predict_id,
@@ -336,10 +343,11 @@ async def request_results(predict_id:uuid.UUID, redisURL: list[str] = Form(defau
                 "found_Seg":found_Seg
             }
         else:
-            print("found json_meta in redis")
+            '''print("found json_meta in redis")
             print(type(found_Orig))
             print(type(found_Bbox))
-            print(type(found_Seg))
+            print(type(found_Seg))'''
+            response.status_code = status.HTTP_200_OK
             return found_Orig, found_Bbox, found_Seg
     except Exception:
         loggercrier.error("error in POST predict_id redis")
@@ -407,7 +415,7 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
             ml_inference_log.append(timefromstart_originalencode)
 
             await batchlist_encode(belongto_name, objects_found, final_composed_images, item,
-                                   batchlist, encoded, generated_predictID)
+                                   batchlist, encoded, generated_predictID, original_img_w, original_img_h)
 
         logger.info(("final batchlist length ", len(batchlist)))
 
@@ -418,7 +426,6 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
         # final metrics after all images are shown
         ta = TypeAdapter(JsonResponse)
         sendable = ta.dump_json(json_response_all)
-        print("sendables predict_id was ??", sendable[0], " that is the same as ", generated_predictID)
         ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
 
         sentence = ["file/img handling(filecheck&file.read()/url-to-img)", "img preprocess to tensor",
@@ -459,6 +466,7 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
                 json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=240)
                 logger.info(("setting json meta for ", generated_predictID, "json"))
                 logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
+                logger.info("redis and prediction_processing finished!")
 
             except redis.exceptions.ResponseError:
                 loggercrier.error(("error setting jsonmeta data ", sendable))
@@ -469,14 +477,27 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
 
 # generoidaan /predict post requestin uniikki id (predict_id) jolla haetaan Get ja Post requestilla redisistä Json data sekä kuvien 64 encoded bytes
 # prediction_processing laitetaan arqumenttina request, lähetetyt tiedostot ja fintraffic url joka suoritetaan taustalla. Background task ajetaan vasta kun predict_id on lähetetty return:in jälkeen
-@router.post("/predict")
-async def get_prediction(background_task: BackgroundTasks,req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[])): #file: UploadFile = File(...),
 
-    generated_predictID = uuid.uuid4()
+def test():
+    print("in test function")
+    print("pretending to do job..")
+
+
+@task_manager.task(retries=2, delay=0.3)
+@router.post("/predict")
+async def get_prediction(req: Request, response: Response, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks)): # generated_predictID: str = Form(default=[])
+
+    #generated_predictID = uuid.uuid4()
+    print("uuid? " ,generated_predictID)
     print("generated_predictID ", generated_predictID)
     print("type of id ", type(generated_predictID))
-    background_task.add_task(prediction_processing, generated_predictID, req, file, url)
-    return {"predict_id" : generated_predictID}
+    print("task_manager store??", task_manager.store)
+    task_id_by_manager = tasks.add_task(prediction_processing, generated_predictID, req, file, url)
+    #task_id_by_manager = tasks.add_task(test)
+    print("task_manager ??", task_manager)
+    print("task_id_by_manager", task_id_by_manager)
+    return {"predict_id" : generated_predictID,
+            "id of task" : task_id_by_manager}
 
 
 

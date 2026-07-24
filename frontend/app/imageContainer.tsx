@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-
+import {setCookieServerAction} from './actions/cookies'
 import FormImage from "./form-component";
 import ImageSearch from "./cctvImageSearch";
 
@@ -20,9 +20,15 @@ export default function ImageContainer({
   const [selectedBaseId, setSelectedBaseId] = useState(null);
   const content_tosend = [];
   let wanted_imgUrl = "";
+  let generated_predictID = crypto.randomUUID();
+    console.log("generated_predictID done?? ", generated_predictID)
+    console.log("type of ", typeof(generated_predictID))
 
   async function submitHandler() {
     const formData = new FormData();
+
+    formData.append("generated_predictID", generated_predictID);
+    console.log("formdata contents, ", Object.entries(formData)[0]);
 
     if (selectedFile != null) {
         console.log("selectedFile", selectedFile);
@@ -55,10 +61,7 @@ export default function ImageContainer({
 
     }
     console.log("moving to form fetch content ", formData)
-    console.log(".. and its length", formData.length)
-    for(let i = 0; i < formData.length; i++){
-        console.log(formData[i])
-    }
+    console.log([formData.entries()])
 
     const res = await fetch(
       "http://localhost:8000/predict",
@@ -73,6 +76,9 @@ export default function ImageContainer({
     console.log(typeof(data))
 
     console.log(data.predict_id)
+    console.log("data gotten from /predict",data)
+    console.log("task?? ", data['id of task'])
+    setCookieServerAction("task_id",data['id of task'] )
     var predict_id = data.predict_id
     const byteSize = (str) => new Blob([str]).size;
     console.log(byteSize(data))
@@ -80,6 +86,7 @@ export default function ImageContainer({
 
 
     if(predict_id){
+
         redirect(`/predict/${predict_id}`)
     }
 

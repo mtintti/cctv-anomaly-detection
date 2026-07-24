@@ -13,6 +13,8 @@ class Predictiondetails(BaseModel):
 class JsonResponse(BaseModel):
     belongsto: str | None
     original_img: str | None
+    img_w: int
+    img_h: int
     details: list[Predictiondetails]
     prediction: list[Inviprediction]
 
