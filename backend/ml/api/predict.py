@@ -2,6 +2,8 @@ import asyncio
 import base64
 import time
 import uuid
+from typing import Annotated
+
 import httpx
 import numpy as np
 import onnxruntime
@@ -243,8 +245,6 @@ async def encodeimageto_redis_json(batchlist, json_response_all, item: str | Upl
                         except redis.exceptions.ResponseError:
                             loggercrier.error(("error setting data ", imgset, bboxset, segmaskset))
 
-
-
                     except Exception:
                         loggercrier.error("error creating index/setting data redis")
 
@@ -278,7 +278,7 @@ def task_status(task_id: uuid.UUID):
 ## by id work, used by server component to get prediction_processing returned json.
 # Json prediction sisältää bbox ja segmask Redis urlit, (img:{predict_id}:{redisindex}:haluttukuva)
 @router.get("/predict/{predict_id}/{task_id_by_manager}")
-async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, response: Response):
+async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, response: Response, retry_after: Annotated[str | None, Header(convert_underscores=False)] = None,):
     found = None
     try:
         found = r.get(f"json_meta:{predict_id}:json")
@@ -297,7 +297,8 @@ async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, re
             return {"none found" : predict_id, "records status" : record_by_id_of_task}
         else:
             response.status_code = status.HTTP_201_CREATED
-            return {"Retry-After:": 10, "record by id of task":record_by_id_of_task}
+            response.headers.append('Retry-After',str(3000))
+            return {"record by id of task":record_by_id_of_task}
 
     else:
         #print("found json_meta in redis")
@@ -312,9 +313,9 @@ async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, re
 async def request_results(predict_id:uuid.UUID, response: Response, redisURL: list[str] = Form(default=[])):
     try:
         logger.info("redis_URL gotten ")
-        #print("predict_id, ", predict_id," ", redisURL)
-        #for re in redisURL:
-            #print("redisURLS recived ", re)
+        print("predict_id, ", predict_id," ", redisURL)
+        for re in redisURL:
+            print("redisURLS recived ", re)
         original_redisURL = redisURL[0]
         bbox_redisURL = redisURL[1]
         seg_redisURL = redisURL[2]

@@ -4,6 +4,14 @@ import { Suspense, useState } from 'react';
 import predictedImage from "../../../public/prediction-v9.jpg"
 import { Fallback_ui } from './lib/fallback_ui'
 
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query'
+
 
 // sama structuuri kuin ml/schema/ json_response
 interface Predictiondetails {
@@ -31,18 +39,56 @@ interface PredictionEntry {
   jsonresponse: Jsonresponse[];
 }
 
-let predictionCardData: PredictionEntry[] = Fallback_ui;
 
 
 //export default async function PredictionMain({predictionCardData}:{predictionCardData: object}){
 export default function PredictionMain({predict_id}:{predict_id: string}){
+    const [refetch_time, setRefetch_time] = useState(5000)
 
-    try{
+    {/*try{
         const predictionCardData = fetch(`/api/predict/${predict_id}`);
         console.log("if success ", predictionCardData)
     } catch (error){
         console.log("error, ", error);
+    }*/}
+    //var refetch_time = null
+    const queryClient = useQueryClient()
+    const { isPending, error, data, isFetching } = useQuery({ queryKey: ['preds'],
+        queryFn: async () => {
+        const res = await fetch(`/api/predict/${predict_id}`,)
+        //console.log("res query headers", res.headers.entries() )//get('Retry-After'))
+        for (const [key, value] of res.headers.entries()) {
+          console.log(`${key}: ${value}`);
+        }
+        console.log("res status set in backend ",res.status)
+        console.log("refetch_time set ... ", refetch_time)
+        console.log(typeof(Number(res.headers.get('Retry-After'))))
+        setRefetch_time(Number(res.headers.get('Retry-After')))
+        console.log("refetch_time set now?? ",refetch_time )
+
+        return await res.json()
+        },
+        refetchInterval: refetch_time,
+
+    });
+        console.log("refetch_time set now global?? ",refetch_time)
+
+
+    if(data != undefined){
+        console.log("res in tanstack ", data)
+        console.log(typeof(data))
+        console.log("was it true, ", data['found'])
+        if(typeof(data['found']) === 'string'){
+            console.log("was it true, ", data['found'])
+            var data_to_show = JSON.parse(data['found'])
+            console.log("data JSON.parsed")
+
+        }
+
     }
+
+let predictionCardData: PredictionEntry[] = data ?? Fallback_ui;
+
 
     const [clicked_index, setClicked_index] = useState(0);
     //let img_w = predictionCardData[0].jsonresponse[0].img_w
@@ -96,17 +142,3 @@ return(
 
     )
 }
-
-/* <span className="text-large font-light">
-                    <div className="col-span-1 md:grid-cols-3 gap-2 my-2">
-                        <div className="inline-block bg-teal-300 text-teal-800 pl-2 py-1 rounded-full">
-                            <p className="text-sm font-light">Traverse Crack</p>
-                        </div>
-                        <div className="inline-block bg-cyan-500 text-cyan-800 pl-2 py-1 rounded-full">
-                            <p className="text-sm font-light">Longitudinal crack</p>
-                        </div>
-                        <div className="inline-block bg-blue-950 text-blue-300 pl-2 py-1 rounded-full">
-                            <p className="text-sm font-light">Other corruption</p>
-                        </div>
-                    </div>
-                </span> */

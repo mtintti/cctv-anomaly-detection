@@ -73,8 +73,6 @@ export default async function PredictionPage({
     }*/}
 
 
-
-
      return(
         <div className="pt-5 pb-4 z-0">
             <ImageContainer stations={stationdata.features}/>
