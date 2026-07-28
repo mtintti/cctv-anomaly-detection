@@ -12,7 +12,7 @@ from PIL import Image
 from io import BytesIO
 import torch
 import torchvision.ops as ops
-from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException, BackgroundTasks, Response, status, \
+from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException, Response, status, \
     Header, Depends
 from fastapi_taskflow import TaskManager
 from pydantic import TypeAdapter
@@ -24,6 +24,7 @@ from backend.ml.api.letterboxing import letterbox, ImgSize
 from backend.ml.api.onnxtoimg import onnx_to_img
 from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID
 import redis
+from backend.ml.api.testdatafalse import TEST_PREDICTIONS
 
 task_manager = TaskManager()
 
@@ -293,20 +294,20 @@ async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, re
         if record_by_id_of_task is None:
             response.status_code = status.HTTP_404_NOT_FOUND
             print("record by id ", record_by_id_of_task)
-            print("record by id ", record_by_id_of_task)
+            print("found was ", found)
             return {"none found" : predict_id, "records status" : record_by_id_of_task}
         else:
             response.status_code = status.HTTP_201_CREATED
+            print("found was ", found)
             response.headers.append('Retry-After',str(3000))
             return {"record by id of task":record_by_id_of_task}
 
     else:
-        #print("found json_meta in redis")
-        #print(found)
-        #print(type(found))
+        #foundFalse = TEST_PREDICTIONS
         record_by_id_of_task = task_manager.store.get(task_id_by_manager)
+        print("record by id, found JSON data", record_by_id_of_task)
         response.status_code = status.HTTP_200_OK
-        return {"found":found, "record by id of task":record_by_id_of_task}
+    return {"found":found, "record by id of task":record_by_id_of_task}
 
 # haetaan redis predict_id indexissä olevat original, bbox ja segmask kuva bytes, jos indexiä ei ole palautetaan json none found.
 @router.post("/predict/{predict_id}")
@@ -344,10 +345,7 @@ async def request_results(predict_id:uuid.UUID, response: Response, redisURL: li
                 "found_Seg":found_Seg
             }
         else:
-            '''print("found json_meta in redis")
-            print(type(found_Orig))
-            print(type(found_Bbox))
-            print(type(found_Seg))'''
+
             response.status_code = status.HTTP_200_OK
             return found_Orig, found_Bbox, found_Seg
     except Exception:
@@ -482,13 +480,15 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
 def test():
     print("in test function")
     print("pretending to do job..")
+    time.sleep(10)
+
 
 
 @task_manager.task(retries=2, delay=0.3)
 @router.post("/predict")
 async def get_prediction(req: Request, response: Response, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks)): # generated_predictID: str = Form(default=[])
 
-    #generated_predictID = uuid.uuid4()
+    print("")
     print("uuid? " ,generated_predictID)
     print("generated_predictID ", generated_predictID)
     print("type of id ", type(generated_predictID))
@@ -498,7 +498,8 @@ async def get_prediction(req: Request, response: Response, file: list[UploadFile
     print("task_manager ??", task_manager)
     print("task_id_by_manager", task_id_by_manager)
     return {"predict_id" : generated_predictID,
-            "id of task" : task_id_by_manager}
+            "id of task" : task_id_by_manager
+            }
 
 
 

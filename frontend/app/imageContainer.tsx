@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useContext } from "react";
+import {Context} from './providers/tanstack'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import {setCookieServerAction} from './actions/cookies'
@@ -18,6 +19,8 @@ export default function ImageContainer({
     useState<Station | null>(null);
 
   const [selectedBaseId, setSelectedBaseId] = useState(null);
+   const {errormodelSeeable,setErrormodelSeeable, pending, setPending} = useContext(Context);
+
   const content_tosend = [];
   let wanted_imgUrl = "";
   let generated_predictID = crypto.randomUUID();
@@ -86,7 +89,8 @@ export default function ImageContainer({
 
 
     if(predict_id){
-
+        setErrormodelSeeable(false)
+        setPending(true)
         redirect(`/predict/${predict_id}`)
     }
 

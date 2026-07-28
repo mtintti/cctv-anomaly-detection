@@ -7,6 +7,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query'
+import { useState, createContext, useContext } from 'react';
 
 function makeQueryClient() {
   return new QueryClient({
@@ -35,15 +36,23 @@ function getQueryClient() {
     return browserQueryClient
   }
 }
+export const Context = createContext(null);
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // NOTE: Avoid useState when initializing the query client if you don't
   //       have a suspense boundary between this and the code that may
   //       suspend because React will throw away the client on the initial
   //       render if it suspends and there is no boundary
-  const queryClient = getQueryClient()
+
+  const queryClient = getQueryClient();
+  const [errormodelSeeable, setErrormodelSeeable] = useState(false);
+  const [pending, setPending] = useState(false);
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+        <Context.Provider value={{errormodelSeeable, setErrormodelSeeable, pending, setPending}}>
+            {children}
+        </Context.Provider>
+    </QueryClientProvider>
   )
 }

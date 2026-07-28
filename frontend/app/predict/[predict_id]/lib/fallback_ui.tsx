@@ -8,7 +8,7 @@ export const Fallback_ui = [
         img_w: 700,
         img_h: 570,
         details: [
-          { class_id: 0, class_name: 'getting data', confidence_score: 47.50 },
+          { class_id: 0, class_name: 'classname', confidence_score: 34.50 },
         ],
         prediction: [
           { imageBbox: '/fallback/bbox_fallback1.png', imageSeg: '/fallback/segmask_fallback1.png' },
@@ -17,7 +17,7 @@ export const Fallback_ui = [
     ],
   },
   {
-    predict_id: 'a2b3c4d5-...',   // give the second entry its own distinct ID — see below
+    predict_id: 'a2b3c4d5-...',
     jsonresponse: [
       {
         belongsto: 'fallback_2',
@@ -25,7 +25,7 @@ export const Fallback_ui = [
         img_w: 700,
         img_h: 570,
         details: [
-          { class_id: 0, class_name: 'getting data', confidence_score: 53.10 },
+          { class_id: 0, class_name: 'classname', confidence_score: 53.10 },
         ],
         prediction: [
           { imageBbox: '/fallback/bbox_fallback2.png', imageSeg: '/fallback/segmask_fallback2.png' },

@@ -1,10 +1,12 @@
 'use server'
 import { headers, cookies } from 'next/headers'
 import type { NextRequest } from 'next/server'
+import React, {useContext } from "react";
+import {Context} from '../../../providers/tanstack'
 
 
-export async function RedisURLs({predictionCardData}, predict_id){
-    for (let i = 0; i < predictionCardData.length; i++){
+export async function RedisURLs({predictionCardData}, i,predict_id){
+
         console.log("RedisURLs index in ", i)
         const original_redisURL = predictionCardData[i].jsonresponse[0].original_img
         const bbox_redisURL = predictionCardData[i].jsonresponse[0].prediction[0].imageBbox
@@ -15,7 +17,7 @@ export async function RedisURLs({predictionCardData}, predict_id){
         formData.append("redisURL", seg_redisURL)
         console.log("tanstack data to URL", typeof(original_redisURL), typeof(bbox_redisURL), typeof(seg_redisURL))
         //console.log("length of formData ", Object.keys(formData).length);
-         console.log("predict_id to send to POST", predict_id)
+        console.log("predict_id to send to POST", predict_id)
 
         const RedisURLsPost = await POST(formData, predict_id)
         predictionCardData[i].jsonresponse[0].original_img = RedisURLsPost[0]
@@ -23,7 +25,8 @@ export async function RedisURLs({predictionCardData}, predict_id){
         predictionCardData[i].jsonresponse[0].prediction[0].imageSeg = RedisURLsPost[2]
         console.log("GET images, ", typeof(predictionCardData[0].jsonresponse[0].original_img), typeof(predictionCardData[0].jsonresponse[0].prediction[0].imageBbox), typeof(predictionCardData[0].jsonresponse[0].prediction[0].imageSegmask))
         return predictionCardData
-    }
+
+
 }
 
 
@@ -57,7 +60,7 @@ export async function GET(request:NextRequest, {params}:{predict_id : string}){
         console.log("status was not found ",prediction_response.status)
         console.log("typeof ", typeof(prediction_response))
 
-        return Response.json(prediction_response);
+        return Response.json({status: prediction_response.status});
 
     } else if(prediction_response.ok){
         //const predictiondata = await prediction_response;
@@ -65,9 +68,16 @@ export async function GET(request:NextRequest, {params}:{predict_id : string}){
 
         if(prediction_response.status === 200){
             const predictiondata_full = await prediction_response.json();
-            console.log("id was found, found json and record_id", predictiondata_full['found'], predictiondata_full['record by id of task'])
+            let data_to_see = null;
+            //const predictionCardData = predictiondata_full['found']
+            //console.log("id was found, found json and record_id", predictiondata_full['found'], predictiondata_full['record by id of task'])
             const predictionCardData = JSON.parse(predictiondata_full['found'])
-            const data_to_see = await RedisURLs({predictionCardData}, predict_id)
+            console.log("fake data ", predictionCardData.length)
+            for (let i = 0; i < predictionCardData.length; i++){
+                console.log("in loop of RedisURLs")
+                data_to_see = await RedisURLs({predictionCardData},i, predict_id)
+
+            }
 
             console.log("data to see routes side ", data_to_see)
             return Response.json(data_to_see);
