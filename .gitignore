@@ -21,3 +21,6 @@ __pycache__/
 
 # Environment variables
 .env
+
+#tasks
+*.db

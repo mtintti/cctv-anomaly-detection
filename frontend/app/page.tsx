@@ -1,17 +1,17 @@
 import FormImage from './form-component';
 import ImageContainer from './imageContainer.tsx'
 import ParallaxHero from "./hero.tsx"
-
-interface StationsRes {
-  features: Station[];
-}
+import { get_Stations } from "./lib/get_Stations"
 
 export default async function FrontPage(){
 
-   const responce_got = await fetch("http://localhost:8000/", {cache: 'force-cache'});
-   const data_from_fetch = await responce_got.json();
-   const stationsAll = await fetch("http://localhost:8000/stations", {cache: 'force-cache'});
-   const stationdata: StationsRes = await stationsAll.json();
+   //const responce_got = await fetch("http://localhost:8000/", {cache: 'force-cache'});
+   //const data_from_fetch = await responce_got.json();
+   //const stationsAll = await fetch("http://localhost:8000/stations", {cache: 'force-cache'});
+   //const stationdata: StationsRes = await stationsAll.json();
+
+
+    const stationdata = await get_Stations();
 
     return (
     <div className="pt-5 pb-8 z-0">
