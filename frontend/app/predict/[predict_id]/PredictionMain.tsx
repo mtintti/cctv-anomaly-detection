@@ -5,6 +5,7 @@ import {Context} from '../../providers/tanstack'
 import { Fallback_ui } from './lib/fallback_ui'
 import ErrorModal from './error-modal'
 import Skeleton from './skeleton'
+import graph from '../../../public/3dicons-graph.png'
 
 
 import {
@@ -117,15 +118,15 @@ return(
     {pending === true || skeletonMessage != null || isPending === true ? <Skeleton skeletonMessage={skeletonMessage} clicked_index_passed={clicked_index}/>
         :
 
-    <div className="bg-gray-100 md:py-3 md:px-3 inset-shadow-sm inset-shadow-gray-300 grid md:grid-cols-2">
-                        <div>
+    <div className="bg-gray-100 min-w-[360px] md:py-3 md:px-3 inset-shadow-sm inset-shadow-gray-300">
+                        <div className="grid md:grid-cols-3 flex pb-4">
                             <div className={`relative min-w-[360px] md:h-[400px] max-w-[800px] lg:w-[800px] h-[340px] shadow-xl shadow-gray-200`}>
                             <div> { errormodelSeeable === true && <ErrorModal errormodalMessage={errormodalMessage}/> }</div>
                             {errormodelSeeable === false && <div>
                                  {predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox != null ?<>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].original_img}/>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox}/>
-                                    <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageSeg}/>
+                                     <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageSeg}/>
                                     </>
                                  :
                                   <>
@@ -135,8 +136,27 @@ return(
                             </div>
                             }
                         </div>
+                        {/* space between components */}
+                        <div className="w-10 "></div>
+
+                        <div className="bg-purple-100/70 min-w-70 max-w-200 h-full max-md:hidden items-center inset-shadow-sm inset-shadow-purple-300">
+                            <div className="font-light tracking-tight text-lg text-slate-700">
+                                    <div className="my-6 mx-40 h-64">
+                                            <div className="h-50 my-4 mx-8">
+                                            <Image alt="graph gotten from ml runs" width="200" src={graph}/>
+                                            </div>
+                                            <div className="text-center items-center justify-center mb-4">
+                                                <p>Whole runs time</p>
+                                                <div className="flex gap-3 pl-55 top-10">
+                                                    <div className="py-2 px-2 bg-red-100 h-4 w-4 rounded-full"></div>
+                                                    <div className="py-2 px-2 bg-red-100 h-4 w-4 rounded-full"></div>
+                                                </div>
+                                            </div>
+                                    </div>
+                            </div>
                         </div>
-                        <div className="col-span-2  md:col-span-2 bg-gray-300">
+                        </div>
+                        <div className="col-span-2 md:col-span-2 bg-gray-300">
                             <div className="justify-center">
                                 {predictionCardData.map((curr, i) => (
                                     <div key={i}
@@ -145,19 +165,64 @@ return(
                                         {predictionCardData[i].jsonresponse[0].details[0].class_name}
                                     </div>
                                 ))}
-                                <div className="min-w-[360px] max-w-[800px] font-normal bg-gray-200">
+                                <div className="min-w-[360px] max-w-[800px] font-normal bg-gray-200 pb-4">
                                     <div className="pl-10 pt-4 pr-10 grid grid-rows-1 tracking-tight font-bold">
                                     <p className="pb-2 text-base font-sm md:text-xl md:font-medium">{predictionCardData[clicked_index].jsonresponse[0].belongsto}</p>
                                     <div className="grid row-start-2 pt-2">
                                         <p className="font-light text-md pb-2">confidence score of model</p>
                                         <p className="font-light text-md">class id of model</p>
                                         </div>
-                                         <div className="grid pr-10 row-start-2">
-                                            <p className="pb-2">{predictionCardData[clicked_index].jsonresponse[0].details[0].confidence_score}</p>
+                                         <div className="grid pr-10 font-medium text-lg row-start-2">
+                                            <p className="pt-2">{predictionCardData[clicked_index].jsonresponse[0].details[0].confidence_score}</p>
                                             <p>{predictionCardData[clicked_index].jsonresponse[0].details[0].class_id}</p>
                                         </div>
                                     </div>
-
+                                </div>
+                                <div className="min-md:hidden font-light tracking-tight text-lg text-slate-700">
+                                    <div className="my-6 mx-4 min-w-80 h-64">
+                                        <div className="bg-purple-100/70 inset-shadow-sm inset-shadow-purple-300 w-full h-full rounded-md">
+                                            <div className="h-50 my-4 mx-8">
+                                            <Image alt="graph gotten from ml runs" width="200" src={graph}/>
+                                            </div>
+                                            <div className="text-center items-center justify-center mb-4">
+                                                <p>Whole runs time</p>
+                                                <div className="flex gap-3 pl-55 top-6">
+                                                    <div className="py-2 px-2 bg-red-100 h-4 w-4 rounded-full"></div>
+                                                    <div className="py-2 px-2 bg-red-100 h-4 w-4 rounded-full"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="min-w-80 max-w-300 h-[500px] justify-center text-base items-center grid min-sm:grid-rows-4 min-sm:grid-cols-2 max-md:grid-rows-7 max-md:grid-cols-1 pb-4 my-2 mx-2 gap-3 text-shadow-sm text-shadow-slate-300/50">
+                                        <div className="bg-gray-200 inset-shadow-sm inset-shadow-gray-400/50 w-full h-full grid grid-cols-2 rounded-md">
+                                            <p className="mx-2 my-4">file/img handling</p>
+                                            <p className="mx-2 my-4 justify-self-end text-2xl mr-8">100</p>
+                                        </div>
+                                        <div className="bg-gray-200 inset-shadow-sm inset-shadow-gray-400/50 w-full h-full grid grid-cols-2 rounded-md">
+                                            <p className="mx-2 my-4">img preprocess to tensor</p>
+                                            <p className="mx-2 my-4 justify-self-end text-2xl mr-8">100</p>
+                                        </div>
+                                        <div className="bg-gray-200 inset-shadow-sm inset-shadow-gray-400/50 w-full h-full grid grid-cols-2 rounded-md">
+                                            <p className="mx-2 my-4">onnx session's Inference time</p>
+                                            <p className="mx-2 my-4 justify-self-end text-2xl mr-8">100</p>
+                                        </div>
+                                        <div className="bg-gray-200 inset-shadow-sm inset-shadow-gray-400/50 w-full h-full grid grid-cols-2 rounded-md">
+                                            <p className="mx-2 my-4">arranging bbox and segmask</p>
+                                            <p className="mx-2 my-4 justify-self-end text-2xl mr-8">100</p>
+                                        </div>
+                                        <div className="bg-gray-200 inset-shadow-sm inset-shadow-gray-400/50 w-full h-full grid grid-cols-2 rounded-md">
+                                            <p className="mx-2 my-4">original image encode</p>
+                                            <p className="mx-2 my-4 justify-self-end text-2xl mr-8">100</p>
+                                        </div>
+                                        <div className="bg-gray-200 inset-shadow-sm inset-shadow-gray-400/50 w-full h-full grid grid-cols-2 rounded-md">
+                                            <p className="mx-2 my-4">batchlisting items</p>
+                                            <p className="mx-2 my-4 justify-self-end text-2xl mr-8">100</p>
+                                        </div>
+                                        <div className="bg-gray-200 inset-shadow-sm inset-shadow-gray-400/50 w-full h-full grid grid-cols-2 rounded-md">
+                                            <p className="mx-2 my-4">encodeded to response for img</p>
+                                            <p className="mx-2 my-4 justify-self-end text-2xl mr-8">100</p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

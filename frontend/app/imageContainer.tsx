@@ -116,7 +116,7 @@ export default function ImageContainer({
               setSelectedStation(station)
             }}
           />
-          <button className=" pt-1 justify-center text-white text-sm font-bold bg-indigo-400 w-18 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-300 shadow-sm shadow-indigo-500" onClick={submitHandler}>
+          <button className=" pt-1 justify-center text-white text-sm text-shadow-md text-shadow-slate-400/60 font-bold bg-purple-100 w-18 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-100 shadow-sm shadow-purple-400" onClick={submitHandler}>
             Submit
           </button>
     </div>
