@@ -22,7 +22,7 @@ from backend.app.config import logger, loggercrier
 
 from backend.ml.api.letterboxing import letterbox, ImgSize
 from backend.ml.api.onnxtoimg import onnx_to_img
-from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID
+from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID, Metrics
 import redis
 from backend.ml.api.testdatafalse import TEST_PREDICTIONS
 
@@ -30,9 +30,7 @@ task_manager = TaskManager()
 
 # Redis Client yhteyden tiedot, specifidattu settings:in kautta
 r = redis.Redis(host=settings.redishost, port=settings.redisport, username=settings.redisusername, password=settings.redispassword)
-if r:
-    r.ping()
-    logger.info("redis pinged!")
+
 router = APIRouter()
 sess = onnxruntime.InferenceSession(
     'backend/ml/best.onnx')
@@ -152,6 +150,7 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
     ml_inference_log.append((time.perf_counter() - start_decodeimg) * 1000)
     return final_composed_images, original_image_to_use
 
+
 #batclist_encodessa laitetaan löytöjen jsonmeta data (confidence_score, class_id ja belongsto..) Itse kuvat laitetaan tuple:een (bbox, segment, json_response)
 async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID, original_img_w: int, original_img_h: int):
 
@@ -170,9 +169,6 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                 confidencescore = objects_found[z].confidence_score
                 class_id = objects_found[z].class_id
                 class_name = objects_found[z].class_name
-                #print("encoded original ", type(encoded_original_img))
-                #print("img_w ", original_img_w, " img_h ", original_img_h)
-                #print("types, ", type(original_img_w), type(original_img_h))
 
                 predictions = Inviprediction(imageBbox=None, imageSeg=None)
                 details = Predictiondetails(class_id=class_id, class_name=class_name,
@@ -180,7 +176,8 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                 jsonresponse = JsonResponse(belongsto=belongto_name, original_img=None, img_w=original_img_w, img_h=original_img_h,
                                                details=[details],
                                                prediction=[predictions])
-                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse])
+                metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None, original_img_encode=None, batchlist=None, encode_img_tag=None, redis=None, whole_runs_time=None)
+                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics])
                 batchlist.append(((bbox), (segmask), constructed))
 
             else:
@@ -190,7 +187,9 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                 jsonresponse = JsonResponse(belongsto=belongto_name, original_img=None, img_w=original_img_w, img_h=original_img_h,
                                            details=[details],
                                            prediction=[predictions])
-                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
+                metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None,
+                                  original_img_encode=encoded_original_img, batchlist=None, encode_img_tag=None, redis=None ,whole_runs_time=None)
+                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
                 #json_response_all.append(constructed)
                 #print("constructed none path, ", constructed)
                 batchlist.append(constructed)
@@ -201,6 +200,7 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
 
 # kuvat voivat suoraan näyttää <img> tagissä kun ne on muutettu data:imgage/png base64 muotoon bufferin kautta
 def encode_image(image_tochange):
+
         #PIL.Image.Image muutetaan png byteksi
         buffer_touse = BytesIO()
         #print("imgage_tochange type ", type(image_tochange))
@@ -210,51 +210,82 @@ def encode_image(image_tochange):
         final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded_orig
         return final_bytes_to_encoded_png# was this, using encoded ones, changedto_Bytes
 
-async def encodeimageto_redis_json(batchlist, json_response_all, item: str | UploadFile, encoded_original, generated_predictID):
+
+# kuvat voivat suoraan näyttää <img> tagissä kun ne on muutettu data:imgage/png base64 muotoon bufferin kautta
+def encode_image_in_batch(image_tochange):
+        print("all encode batch ", image_tochange)
+        print("all encode batch type", type(image_tochange[0]))
+        print("length of encode batch ", len(image_tochange))
+        to_use = []
+        for b in image_tochange:
+            print("to use ", len(to_use))
+            if type(b) is tuple:
+                #PIL.Image.Image muutetaan png byteksi
+                buffer_touse = BytesIO()
+                #print("imgage_tochange type ", type(image_tochange))
+                b[0].save(buffer_touse, format="PNG")
+                changedto_Bytes = buffer_touse.getvalue()
+                encoded = base64.b64encode(changedto_Bytes)
+                final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
+
+                buffer_touse2 = BytesIO()
+                # print("imgage_tochange type ", type(image_tochange))
+                b[1].save(buffer_touse2, format="PNG")
+                changedto_Bytes2 = buffer_touse2.getvalue()
+                encoded2 = base64.b64encode(changedto_Bytes2)
+                final_bytes_to_encoded_png2 = b'data:image/png;base64,' + encoded2
+                to_use.append((final_bytes_to_encoded_png, final_bytes_to_encoded_png2))
+            else:
+                to_use.append(b)
+
+
+        return to_use # was this, using encoded ones, changedto_Bytes
+
+async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID):
     try:
         # predict_id vertaa kyseisen lähetetyn /predict requestin tietoon, jokaiseen batchlist indexistä jossa on fintraffic kuva
         # ja/tai bbox + segmentmask generoidaan uniikki id (img:{predict_id}:{redisindex}:haluttukuva) jotta monet kuvasta olevat löydöt eivät indexoidu päällekkäin. Kuvat lähetetään Redis databaseen josta ne haetaan myöhemmin omilla id_illä
+        b = 0
         for l in batchlist:
             redisindex = uuid.uuid4()
             logger.info(("redisuuid is encodeimagetojson ", redisindex))
             if type(l) == tuple:
 
-                final_bytes_to_resBbox, final_bytes_to_resSeg = await asyncio.gather(
-                    asyncio.to_thread(encode_image, l[0]), asyncio.to_thread(encode_image, l[1]))
+                #final_bytes_to_resBbox, final_bytes_to_resSeg = await asyncio.gather(
+                    #asyncio.to_thread(encode_image, l[0]), asyncio.to_thread(encode_image, l[1]))
 
                 try:
-                    r.ft(f"img:{generated_predictID}:{redisindex}").dropindex(True)
-                    logger.info("index was dropped in redis, was there already")
-                except redis.exceptions.ResponseError:
-                    logger.info("no redis index already present")
-                    pass
+                    logger.info("trying redis main block")
 
                     try:
-                        logger.info("trying redis main block")
+                        print("length of encoded whole batch ", len(encoded_whole_batch))
+                        print("length of batchlist ", len(batchlist))
+                        print("b ", b)
+                        separated_invidual = encoded_whole_batch[0]
+                        final_bytes_to_resBbox = separated_invidual[b][0]
+                        final_bytes_to_resSeg = separated_invidual[b][1]
+                        print("type of index b ", type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
 
-                        try:
-                            logger.info((f"trying to create redis index img{redisindex}"))
-                            imgset = r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=240)
-                            logger.info(imgset)
-                            # bboxset = r.set("bbox", final_bytes_to_resBbox, 240)
-                            bboxset = r.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox, ex=240)
-                            logger.info(bboxset)
-                            # segmaskset = r.set("segmask", final_bytes_to_resSeg, 240)
-                            segmaskset = r.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg, ex=240)
-                            logger.info(segmaskset)
-                            #redisindex.create_index(schema, definition=IndexDefinition(prefix=["img:"], index_type=IndexType.JSON))
-                        except redis.exceptions.ResponseError:
-                            loggercrier.error(("error setting data ", imgset, bboxset, segmaskset))
+                        pipe = r.pipeline()
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=240)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox, ex=240)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg, ex=240)
+                        results_setted = pipe.execute()
+                        logger.info(("results_setted ",results_setted))
 
-                    except Exception:
-                        loggercrier.error("error creating index/setting data redis")
+                    except redis.exceptions.ResponseError:
+                        loggercrier.error(("error setting data "))
 
-                    l[2].jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
-                    l[2].jsonresponse[0].prediction[0].imageBbox = f"img:{generated_predictID}:{redisindex}:bbox"
-                    l[2].jsonresponse[0].prediction[0].imageSeg = f"img:{generated_predictID}:{redisindex}:segmask"
+                except Exception:
+                    loggercrier.error("error creating index/setting data redis")
 
-                    constructed = l[2]
-                    json_response_all.append(constructed)
+
+                l[2].jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
+                l[2].jsonresponse[0].prediction[0].imageBbox = f"img:{generated_predictID}:{redisindex}:bbox"
+                l[2].jsonresponse[0].prediction[0].imageSeg = f"img:{generated_predictID}:{redisindex}:segmask"
+
+                constructed = l[2]
+                json_response_all.append(constructed)
 
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
@@ -262,6 +293,9 @@ async def encodeimageto_redis_json(batchlist, json_response_all, item: str | Upl
                 logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
+
+            b += 1
+
 
 
     except Exception:
@@ -271,7 +305,7 @@ async def encodeimageto_redis_json(batchlist, json_response_all, item: str | Upl
 @router.get("/tasks")
 def task_status(task_id: uuid.UUID):
     record = task_manager.store.get(str(task_id))
-    print("record /tasks", record)
+    #print("record /tasks", record)
     if record is None:
         raise HTTPException(status_code=404)
     return {"status": record.status.value, "error": record.error}
@@ -315,8 +349,8 @@ async def request_results(predict_id:uuid.UUID, response: Response, redisURL: li
     try:
         logger.info("redis_URL gotten ")
         print("predict_id, ", predict_id," ", redisURL)
-        for re in redisURL:
-            print("redisURLS recived ", re)
+        '''for re in redisURL:
+            print("redisURLS recived ", re)'''
         original_redisURL = redisURL[0]
         bbox_redisURL = redisURL[1]
         seg_redisURL = redisURL[2]
@@ -324,30 +358,30 @@ async def request_results(predict_id:uuid.UUID, response: Response, redisURL: li
         found_Bbox = None
         found_Seg = None
         try:
-            logger.info(("redis_URL r.get() ", original_redisURL))
-            found_Orig = r.get(f"{original_redisURL}") #.search(Query(f"{predict_id}"))
 
-            logger.info(("redis_URL r.get() ", bbox_redisURL))
-            found_Bbox = r.get(f"{bbox_redisURL}")
-
-            logger.info(("redis_URL r.get() ", seg_redisURL))
-            found_Seg = r.get(f"{seg_redisURL}")
+            pipe = r.pipeline()
+            pipe.get(f"{original_redisURL}")
+            pipe.get(f"{bbox_redisURL}")
+            pipe.get(f"{seg_redisURL}")
+            results_getted = pipe.execute()
+            logger.info(("length of .get() ",len(results_getted)))
+            logger.info(("", type(results_getted[0]), type(results_getted[1]), type(results_getted[2])))
         except redis.exceptions.ResponseError:
             logger.info("no redis index already present")
 
-        if found_Orig is None or found_Bbox is None or found_Seg is None:
+        if len(results_getted) < 3:
             response.status_code = status.HTTP_206_PARTIAL_CONTENT
 
             return {
                 "none found" : predict_id,
-                "found_Orig" : found_Orig,
-                "found_Bbox" : found_Bbox,
-                "found_Seg":found_Seg
+                "found_Orig" : results_getted[0],
+                "found_Bbox" : results_getted[1],
+                "found_Seg": results_getted[2]
             }
         else:
 
             response.status_code = status.HTTP_200_OK
-            return found_Orig, found_Bbox, found_Seg
+            return results_getted[0], results_getted[1], results_getted[2]
     except Exception:
         loggercrier.error("error in POST predict_id redis")
 
@@ -419,13 +453,25 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
         logger.info(("final batchlist length ", len(batchlist)))
 
         start_encode = time.perf_counter()
-        await encodeimageto_redis_json(batchlist, json_response_all, item, encoded, generated_predictID)
+        #await encodeimageto_redis_json(batchlist, json_response_all, item, encoded, generated_predictID)
+        encoded_whole_batch = await asyncio.gather(
+            asyncio.to_thread(encode_image_in_batch, batchlist))
         timefromstart_encode = (time.perf_counter() - start_encode) * 1000
-
+        print("length gotten from to use ", len(encoded_whole_batch))
+        '''print(len(encoded_whole_batch[0]))
+        print(type(encoded_whole_batch[0]))
+        print(len(encoded_whole_batch[0][0][0]))
+        print(type(encoded_whole_batch[0][0][0]))'''
+        start_send_redis = time.perf_counter()
+        await encodeimageto_redis_json(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID)
+        timefromstart_send_redis = (time.perf_counter() - start_send_redis) * 1000
+        logger.info(("time for redis ", timefromstart_send_redis))
         # final metrics after all images are shown
-        ta = TypeAdapter(JsonResponse)
-        sendable = ta.dump_json(json_response_all)
+        #ta = TypeAdapter(JsonResponse)
+        #sendable = ta.dump_json(json_response_all)
         ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
+        '''
+        print(" ")
 
         sentence = ["file/img handling(filecheck&file.read()/url-to-img)", "img preprocess to tensor",
                     "onnx session's Inference time", "results made to bbox and segmask"," once per det original image encode", "batchlisting items"]
@@ -436,10 +482,31 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
                 print(f"{sentence[z % 6]} {value:.2f} ms")
         print(f"encodeded to response for <img> tag {timefromstart_encode:.2f} ms")
         print("--- fin ---")
-        print(f"Whole run's time {ml_inference_log[-1]:.2f} ms")
-        print("all responses for final JSON ", len(json_response_all))
-        print("internal lists, and debug: size ml_log ", len(ml_inference_log), " objects_found ", len(objects_found))
-        print("")
+        print(f"Whole run's time {ml_inference_log[-1]:.2f} ms")'''
+
+        handleling_value_ms = f"{ml_inference_log[0][0]: .2f}"
+        process_to_tensor_value_ms = f"{ml_inference_log[1]: .2f}"
+        inference_value_ms = f"{ml_inference_log[2]: .2f}"
+        bbox_seg_value_ms = f"{ml_inference_log[3]: .2f}"
+        original_encode_value_ms = f"{ml_inference_log[4]: .2f}"
+        batchlist_value_ms = f"{ml_inference_log[5]: .2f}"
+        encode_img_tag_value_ms = f"{timefromstart_encode: .2f}"
+        redis_value_ms = f"{timefromstart_send_redis: .2f}"
+        whole_value_ms = f"{ml_inference_log[-1]:.2f}"
+        metrics = Metrics(handling=handleling_value_ms, preprocess_to_tensor=process_to_tensor_value_ms, inference=inference_value_ms, bbox_and_segmask=bbox_seg_value_ms,
+                          original_img_encode=original_encode_value_ms, batchlist=batchlist_value_ms, encode_img_tag=encode_img_tag_value_ms, redis=redis_value_ms, whole_runs_time=whole_value_ms)
+        #print("json response metrics to change?", json_response_all[0])
+        #print("")
+
+        #print("values are" ,handleling_value_ms, process_to_tensor_value_ms, inference_value_ms, bbox_seg_value_ms, original_encode_value_ms, batchlist_value_ms, encode_img_tag_value_ms, whole_value_ms)
+        json_response_all[0].metrics = metrics
+        #print("metrics changed? ", json_response_all[0].metrics)
+        #print("all responses for final JSON ", len(json_response_all))
+
+        ta = TypeAdapter(JsonResponse)
+        sendable = ta.dump_json(json_response_all)
+        #print("internal lists, and debug: size ml_log ", len(ml_inference_log), " objects_found ", len(objects_found))
+        #print("")
         ml_inference_log.clear()
         objects_found.clear()
         toprocess.clear()
@@ -451,24 +518,19 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
         #finaali json sendable on valmis kaikkien löydetyiden kuvien datalla,
         #jokaisen redis predict_id batchlistiin appended listasta on tehty redis set tallennus joten json responce_all lista tallennetaan redisiin.
         #Sendable json data haetaan @router.get("/predict/{predict_id}") requestissa saadulla predict_id:llä
+
+
+        logger.info("trying redis main block for sendable")
+
         try:
-            r.ft(f"json_meta:{generated_predictID}").dropindex(True)
-            logger.info("index was dropped in redis, was there already")
+            logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
+            json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=240)
+            logger.info(("setting json meta for ", generated_predictID, "json"))
+            logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
+            logger.info("redis and prediction_processing finished!")
+
         except redis.exceptions.ResponseError:
-            logger.info("no redis index already present for json meta")
-            pass
-
-            logger.info("trying redis main block for sendable")
-
-            try:
-                logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
-                json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=240)
-                logger.info(("setting json meta for ", generated_predictID, "json"))
-                logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
-                logger.info("redis and prediction_processing finished!")
-
-            except redis.exceptions.ResponseError:
-                loggercrier.error(("error setting jsonmeta data ", sendable))
+            loggercrier.error(("error setting jsonmeta data ", sendable))
 
 
     except Exception:

@@ -15,6 +15,8 @@ export const Fallback_ui = [
         ],
       },
     ],
+    metrics:
+        { handling: '1000.00', preprocess_to_tensor: '100.00', inference: '120.00', bbox_and_segmask: '40.00', original_img_encode: '460.00', batchlist: '0.30',  encode_img_tag: '3400.00', redis: '100.00' ,whole_runs_time: '5544.00'},
   },
   {
     predict_id: 'a2b3c4d5-...',
@@ -32,6 +34,8 @@ export const Fallback_ui = [
         ],
       },
     ],
+    metrics:
+      { handling: '1000.00', preprocess_to_tensor: '100.00', inference: '120.00', bbox_and_segmask: '40.00', original_img_encode: '460.00', batchlist: '0.30',  encode_img_tag: '3400.00',redis: '100.00', whole_runs_time: '5544.00'},
   },
 ];
 

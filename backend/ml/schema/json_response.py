@@ -18,7 +18,19 @@ class JsonResponse(BaseModel):
     details: list[Predictiondetails]
     prediction: list[Inviprediction]
 
+class Metrics(BaseModel):
+    handling: str | None
+    preprocess_to_tensor: str | None
+    inference: str | None
+    bbox_and_segmask: str | None
+    original_img_encode: str | None
+    batchlist: str | None
+    encode_img_tag: str | None
+    redis: str | None
+    whole_runs_time: str | None
+
 class PredictID(BaseModel):
     predict_id: uuid.UUID
     jsonresponse: list[JsonResponse]
+    metrics: list[Metrics]
 
