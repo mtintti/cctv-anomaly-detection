@@ -31,7 +31,7 @@ export default function Skeleton(skeletonMessage){
                                         {Fallback_ui[i].jsonresponse[0].details[0].class_name}
                                     </div>
                                 ))}
-                                <div className="w-[360px] md:w-[700px] lg:w-[800px] font-normal bg-gray-200 animate-pulse">
+                                <div className="w-[360px] md:w-[700px] lg:w-[800px] font-normal bg-gray-200 animate-pulse pb-4">
                                     <div className="pl-10 pt-4 pr-10 grid grid-rows-1 tracking-tight font-bold">
                                     <p className="pb-2 text-xl font-medium animate-pulse">{Fallback_ui[clicked_index].jsonresponse[0].belongsto}</p>
                                     <div className="grid row-start-2 pt-2">

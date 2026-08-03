@@ -83,10 +83,10 @@ export async function GET(request:NextRequest, {params}:{predict_id : string}){
             return Response.json(data_to_see);
 
         }else if(prediction_response.status === 201){
-            const predictiondata_partical = await prediction_response.json();
-            console.log("id was not there, but record_id was", predictiondata_partical['record by id of task'])
+            const predictiondata_processing = await prediction_response.json();
+            console.log("id was not there, but record_id was", predictiondata_processing['record by id of task'])
             console.log('trying again..')
-            return Response.json(predictiondata_partical, {
+            return Response.json(predictiondata_processing, {
               status: prediction_response.status,
               headers: {
                 "Retry-After":
@@ -94,7 +94,13 @@ export async function GET(request:NextRequest, {params}:{predict_id : string}){
               },
             });
 
-            //return prediction_response
+        }else if(prediction_response.status === 206){
+            const predictiondata_partical = await prediction_response.json();
+            console.log("parital content", predictiondata_partical)
+            return Response.json(predictiondata_partical, {
+              status: prediction_response.status,
+
+            })
         }
     }
 }
