@@ -8,7 +8,7 @@ class Inviprediction(BaseModel):
 class Predictiondetails(BaseModel):
     class_id: int | None
     class_name: str | None
-    confidence_score: float | None
+    confidence_score: str | None
 
 class JsonResponse(BaseModel):
     belongsto: str | None
