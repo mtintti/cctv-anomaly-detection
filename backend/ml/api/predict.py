@@ -166,7 +166,8 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
 
                 bbox = invidual.overlay_bbox
 
-                confidencescore = objects_found[z].confidence_score
+                #confidencescore = objects_found[z].confidence_score
+                confidencescore = f"{objects_found[z].confidence_score: .2f}"
                 class_id = objects_found[z].class_id
                 class_name = objects_found[z].class_name
 
@@ -184,11 +185,11 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                 logger.info("skipped showing, results were none")
                 predictions = Inviprediction(imageBbox=None, imageSeg=None)
                 details = Predictiondetails(class_id=None, class_name=None, confidence_score=None)
-                jsonresponse = JsonResponse(belongsto=belongto_name, original_img=None, img_w=original_img_w, img_h=original_img_h,
+                jsonresponse = JsonResponse(belongsto=belongto_name, original_img=encoded_original_img, img_w=original_img_w, img_h=original_img_h,
                                            details=[details],
                                            prediction=[predictions])
                 metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None,
-                                  original_img_encode=encoded_original_img, batchlist=None, encode_img_tag=None, redis=None ,whole_runs_time=None)
+                                  original_img_encode=None, batchlist=None, encode_img_tag=None, redis=None ,whole_runs_time=None)
                 constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
                 #json_response_all.append(constructed)
                 #print("constructed none path, ", constructed)
@@ -289,7 +290,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
 
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
-                imgset = r.set(f"img:{generated_predictID}:{redisindex}:original", encoded_original, ex=240)
+                imgset = r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=240)
                 logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
@@ -349,41 +350,35 @@ async def request_results(predict_id:uuid.UUID, response: Response, redisURL: li
     try:
         logger.info("redis_URL gotten ")
         print("predict_id, ", predict_id," ", redisURL)
-        '''for re in redisURL:
-            print("redisURLS recived ", re)'''
-        original_redisURL = redisURL[0]
-        bbox_redisURL = redisURL[1]
-        seg_redisURL = redisURL[2]
-        found_Orig = None
-        found_Bbox = None
-        found_Seg = None
+        print("length of redisURL's ", len(redisURL))
         try:
-
             pipe = r.pipeline()
-            pipe.get(f"{original_redisURL}")
-            pipe.get(f"{bbox_redisURL}")
-            pipe.get(f"{seg_redisURL}")
+            for url in redisURL:
+                pipe.get(f"{url}")
+                print("url we use ", url)
+
             results_getted = pipe.execute()
             logger.info(("length of .get() ",len(results_getted)))
-            logger.info(("", type(results_getted[0]), type(results_getted[1]), type(results_getted[2])))
+            logger.info(("", type(results_getted)))
+            for i in results_getted:
+                logger.info(type(i))
         except redis.exceptions.ResponseError:
             logger.info("no redis index already present")
 
         if len(results_getted) < 3:
+            print("206, length of results_getted was ", len(results_getted))
             response.status_code = status.HTTP_206_PARTIAL_CONTENT
 
             return {
-                "none found" : predict_id,
-                "found_Orig" : results_getted[0],
-                "found_Bbox" : results_getted[1],
-                "found_Seg": results_getted[2]
+               results_getted[0]
             }
         else:
 
             response.status_code = status.HTTP_200_OK
+            print("200, length of results_getted was ", len(results_getted))
             return results_getted[0], results_getted[1], results_getted[2]
     except Exception:
-        loggercrier.error("error in POST predict_id redis")
+        loggercrier.error("error in POST predict_id redis", exc_info=True)
 
 
 
@@ -458,31 +453,13 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
             asyncio.to_thread(encode_image_in_batch, batchlist))
         timefromstart_encode = (time.perf_counter() - start_encode) * 1000
         print("length gotten from to use ", len(encoded_whole_batch))
-        '''print(len(encoded_whole_batch[0]))
-        print(type(encoded_whole_batch[0]))
-        print(len(encoded_whole_batch[0][0][0]))
-        print(type(encoded_whole_batch[0][0][0]))'''
+
         start_send_redis = time.perf_counter()
         await encodeimageto_redis_json(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID)
         timefromstart_send_redis = (time.perf_counter() - start_send_redis) * 1000
         logger.info(("time for redis ", timefromstart_send_redis))
-        # final metrics after all images are shown
-        #ta = TypeAdapter(JsonResponse)
-        #sendable = ta.dump_json(json_response_all)
-        ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
-        '''
-        print(" ")
 
-        sentence = ["file/img handling(filecheck&file.read()/url-to-img)", "img preprocess to tensor",
-                    "onnx session's Inference time", "results made to bbox and segmask"," once per det original image encode", "batchlisting items"]
-        for z, value in enumerate(ml_inference_log[:-1]):
-            if type(value) == tuple:
-                print(f"{sentence[z % 6]} {value[0]:.2f} ms for item ", value[1])
-            else:
-                print(f"{sentence[z % 6]} {value:.2f} ms")
-        print(f"encodeded to response for <img> tag {timefromstart_encode:.2f} ms")
-        print("--- fin ---")
-        print(f"Whole run's time {ml_inference_log[-1]:.2f} ms")'''
+        ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
 
         handleling_value_ms = f"{ml_inference_log[0][0]: .2f}"
         process_to_tensor_value_ms = f"{ml_inference_log[1]: .2f}"

@@ -35,7 +35,7 @@ export default function ParallaxHero() {
   };
 
   return (
-    <div className="relative w-full mt-5 transition-transform duration-900 ease-in ease-out">
+    <div className="relative w-full mt-5 transition: transform duration-900 ease-in ease-out">
       <div className="absolute inset-x-0 top-10 z-20 text-shadow-sm text-shadow-indigo-400 text-slate-300 tracking-wider grid sm:grid-cols-3 justify-items-center">
         <p className="sm:text-2xl md:text-3xl lr:md:text-4xl font-bold">have you ever felt</p>
         <div className="sm:text-2xl md:text-3xl lr:md:text-4xl font-bold text-blue-900 bg-blue-100 px-1 hover:scale-110 hover:rotate-1 hover:motion-reduce">
@@ -52,7 +52,7 @@ export default function ParallaxHero() {
           ref={cardRef}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
-          className="absolute inset-0  w-full h-[65vh] md:h-auto md:aspect-[1500/800] transition-transform duration-200 ease-out"
+          className="absolute inset-0  w-full h-[65vh] md:h-auto md:aspect-[1500/800] transition transform duration-200 ease-out"
           style={{ transformStyle: "preserve-3d" }}
         >
           <Image
@@ -77,7 +77,7 @@ export default function ParallaxHero() {
           </div>
 
           <div
-            className="absolute top-[15%] rotate-[95deg] left-[30%] w-[40%] h-[40%] duration-500 hover:zoom-200"
+            className="absolute top-[15%] rotate-[95deg] left-[30%] w-[40%] h-[40%]  duration-500 hover:zoom-200"
             style={{ transform: "translateZ(30px)" }}
           >
             <Image className="object-contain" alt="blue segmented anomaly mask" fill priority sizes="40vw" src={segment_blue2} />

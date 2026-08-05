@@ -40,6 +40,7 @@ export default function ImageSearch({
       .includes(search.toLowerCase())
   );
 
+console.log("search was now ", search)
 function parsingchoice(station){
     console.log("in parsingchoice")
   if(station){
@@ -54,13 +55,13 @@ function parsingchoice(station){
           onStationSelect(station.id)
         }
         onBaseSelect(station.id);
-
         setsmallerScroll(station)
+        //setSearch(selectedStation)
         console.log("object, ", station.id)
       } else {
         setSidescrollOpen(false)
         onStationSelect(station)
-
+        setSearch(station)
         console.log("object, ", station)
       }
     }
@@ -68,15 +69,17 @@ function parsingchoice(station){
 
   return (
     <div className="z-30 relative">
-     <input className="flex pl-2 w-29 justify-start pt-1 md:pl-4 md:w-full h-8 rounded-xl shadow-sm shadow-gray-300"
+
+     <input className="flex pl-2 w-40 justify-start pt-1 md:pl-4 md:w-80 h-8 rounded-xl shadow-sm shadow-gray-300"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search station"
       />
-     <Conditional showWhen={showSearchRes}>
 
+
+     <Conditional showWhen={showSearchRes}>
       {/*first dropdown*/}
-      <ul className="bg-gray-200 absolute sm:-right-50 md:-right-40 w-60 md:w-full mt-2 max-h-100 rounded-md scroll-smooth scrollbar-thumb-slate-900/60 scrollbar-track-slate-200/10 overflow-y-auto inset-shadow-sm inset-shadow-gray-300">
+      <ul className="bg-gray-200 absolute sm:-right-50 md:-right-40 min-w-40 max-w-60 md:w-50 mt-2 max-h-100 rounded-md scroll-smooth scrollbar-thumb-slate-900/60 scrollbar-track-slate-200/10 overflow-y-auto inset-shadow-sm inset-shadow-gray-300">
         {filtered.map((station) => (
           <li
             key={station.id}
@@ -99,7 +102,7 @@ function parsingchoice(station){
 
       {/*second dropdown*/}
       {smallerScroll && sidescrollOpen == true ?
-      <ul className="bg-gray-200 absolute m-8 w-30 right-20 md:left-0 mt-2 max-h-100 rounded-md scroll-smooth scrollbar-thumb-slate-900/60 scrollbar-track-slate-200/10 overflow-y-auto inset-shadow-sm inset-shadow-gray-300">
+      <ul className="bg-gray-200 absolute m-8 w-30 right-10 md:right-5 mt-2 max-h-100 rounded-md scroll-smooth scrollbar-thumb-slate-900/60 scrollbar-track-slate-200/10 overflow-y-auto inset-shadow-sm inset-shadow-gray-300">
         {smallerScroll.properties.presets.map((invi) => (
           <li
             key={invi.id}

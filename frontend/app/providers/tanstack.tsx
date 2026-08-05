@@ -8,6 +8,7 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query'
 import { useState, createContext, useContext } from 'react';
+import { SessionProvider } from "next-auth/react"
 
 function makeQueryClient() {
   return new QueryClient({
@@ -50,9 +51,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-        <Context.Provider value={{errormodelSeeable, setErrormodelSeeable, pending, setPending}}>
-            {children}
-        </Context.Provider>
+        {/*<SessionProvider session={session}>*/}
+            <Context.Provider value={{errormodelSeeable, setErrormodelSeeable, pending, setPending}}>
+                {children}
+            </Context.Provider>
+    {/*</SessionProvider>*/}
     </QueryClientProvider>
   )
 }

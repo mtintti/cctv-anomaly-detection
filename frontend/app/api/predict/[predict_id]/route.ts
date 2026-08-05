@@ -7,24 +7,35 @@ import {Context} from '../../../providers/tanstack'
 
 export async function RedisURLs({predictionCardData}, i,predict_id){
 
+       try{
         console.log("RedisURLs index in ", i)
         const original_redisURL = predictionCardData[i].jsonresponse[0].original_img
         const bbox_redisURL = predictionCardData[i].jsonresponse[0].prediction[0].imageBbox
         const seg_redisURL = predictionCardData[i].jsonresponse[0].prediction[0].imageSeg
         const formData = new FormData();
+        if(typeof(original_redisURL) === 'string'){
         formData.append("redisURL", original_redisURL)
-        formData.append("redisURL", bbox_redisURL)
-        formData.append("redisURL", seg_redisURL)
+        }
+        if(typeof(bbox_redisURL) === 'string'){
+            formData.append("redisURL", bbox_redisURL)
+        }
+        if(typeof(seg_redisURL) === 'string'){
+            formData.append("redisURL", seg_redisURL)
+        }
+
         console.log("tanstack data to URL", typeof(original_redisURL), typeof(bbox_redisURL), typeof(seg_redisURL))
-        //console.log("length of formData ", Object.keys(formData).length);
         console.log("predict_id to send to POST", predict_id)
 
         const RedisURLsPost = await POST(formData, predict_id)
+        console.log("what was POST res ", RedisURLsPost)
         predictionCardData[i].jsonresponse[0].original_img = RedisURLsPost[0]
         predictionCardData[i].jsonresponse[0].prediction[0].imageBbox = RedisURLsPost[1]
         predictionCardData[i].jsonresponse[0].prediction[0].imageSeg = RedisURLsPost[2]
         console.log("GET images, ", typeof(predictionCardData[0].jsonresponse[0].original_img), typeof(predictionCardData[0].jsonresponse[0].prediction[0].imageBbox), typeof(predictionCardData[0].jsonresponse[0].prediction[0].imageSegmask))
         return predictionCardData
+      }catch (error){
+        return predictionCardData
+      }
 
 
 }
@@ -54,6 +65,7 @@ export async function GET(request:NextRequest, {params}:{predict_id : string}){
     const task_idAll = cookieStore.get("task_id");
     const task_id_by_manager = task_idAll.value;
     console.log("task_id in GET", task_id_by_manager)
+    console.log("predict_id in GET", predict_id)
     const prediction_response = await fetch(`http://localhost:8000/predict/${predict_id}/${task_id_by_manager}`, {cache: 'no-store'})
 
     if(!prediction_response.ok){

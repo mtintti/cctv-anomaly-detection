@@ -7,6 +7,8 @@ import { redirect } from 'next/navigation'
 import {setCookieServerAction} from './actions/cookies'
 import FormImage from "./form-component";
 import ImageSearch from "./cctvImageSearch";
+import AvatarProfile from "./avatar"
+import { ArrowUpDown, animateOnHover } from '../components/animate-ui/icons/arrow-up-down'
 
 export default function ImageContainer({
   stations,
@@ -96,29 +98,45 @@ export default function ImageContainer({
 
   }
 
-  return (
-    <div className="grid grid-cols-3 pl-4 gap-4">
-      <FormImage
-        onFileSelect={(file) => {
-          setSelectedFile(file);
-          console.log("from formImage, ", file)
-          console.log("in formImage's selectedFile", selectedFile)
-        }}
-      />
-          <ImageSearch
-            stations={stations}
-            selectedStation={selectedStation}
-            selectedBaseId={selectedBaseId}
-            onBaseSelect={(baseId) => {
-          setSelectedBaseId(baseId);}}
+  async function movinghome(){
+    redirect('/')
+  }
 
-            onStationSelect={(station) => {
-              setSelectedStation(station)
+  return (
+      <div className="flex items-baseline pl-4 min-w-[360px]">
+        <button className="text-lg" onClick={movinghome}>home</button>
+
+        <div className="grid grid-cols-3 justify-items-center gap-3 pb-2 w-full">
+          <FormImage
+            onFileSelect={(file) => {
+              setSelectedFile(file);
+              console.log("from formImage, ", file)
+              console.log("in formImage's selectedFile", selectedFile)
             }}
           />
-          <button className=" pt-1 justify-center text-white text-sm text-shadow-md text-shadow-slate-400/60 font-bold bg-purple-100 w-18 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-100 shadow-sm shadow-purple-400" onClick={submitHandler}>
-            Submit
-          </button>
-    </div>
+          <div className="ml-4 grid grid-cols-2 w-40 md:w-80">
+              <ImageSearch
+                stations={stations}
+                selectedStation={selectedStation}
+                selectedBaseId={selectedBaseId}
+                onBaseSelect={(baseId) => {
+              setSelectedBaseId(baseId);}}
+
+                onStationSelect={(station) => {
+                  setSelectedStation(station)
+                }}
+              />
+              <button className="justify-self-end justify-center self-center rounded-full px-2 items-center z-40
+               hover:scale-120 transition transform 0.3s ease-in-out"
+              onClick={submitHandler}>
+                <ArrowUpDown className="h-7 w-5 cursor-pointer"/>
+              </button>
+          </div>
+          <AvatarProfile/>
+              {/*<button className="pt-1 justify-center text-white text-sm text-shadow-md text-shadow-slate-400/60 font-bold bg-purple-100 w-10 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-100 shadow-sm shadow-purple-400" onClick={submitHandler}>
+                Submit
+              </button>*/}
+        </div>
+      </div>
   );
 }
