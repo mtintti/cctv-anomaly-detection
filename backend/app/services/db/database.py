@@ -41,22 +41,28 @@ async def create_item_in_db_individual(invi_id, cam_id, pre_presname, pre_url, d
             await aconn.commit()
 
 
-async def get_user_in_db(using_to_search: str):
+async def get_user_in_db(using_to_search):
     async with pool.connection() as aconn:
         async with aconn.cursor() as curr:
-            await curr.execute(f"SELECT * FROM users WHERE email = %s", [using_to_search])
-            user_to_return = await curr.fetchone()[0]
-            print("user gotten from db")
-            print(user_to_return)
-            return user_to_return
+            print("gotten ", using_to_search)
+            email = using_to_search['email']
+            print(("email ", email))
+            await curr.execute(f"SELECT * FROM users WHERE email = %s", (email,))
+            #user_to_return= await aconn.commit()
+            user_to_return = await curr.fetchone()
+            if user_to_return:
+                print("user gotten from db")
+                print(user_to_return)
+                return user_to_return
+            else:
+                print("user was not found, from db")
+                return
 
 
-async def insert_user_in_db(id: int, username: str, email: str, password: int):
+async def insert_user_in_db(username: str, email: str, password: int):
     async with pool.connection() as aconn:
         async with aconn.cursor() as curr:
-            await curr.execute(f"INSERT INTO users (id, username, email, password) Values (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING RETURNING id;",
-                               (id, username, email, password))
-            user_to_return = await curr.fetchone()[0]
-            print("user gotten from db")
-            print(user_to_return)
-            return user_to_return
+
+            await curr.execute(f"INSERT INTO users (username, email, password) Values (%s, %s, %s)",
+                               (username, email, password))
+            await aconn.commit()
