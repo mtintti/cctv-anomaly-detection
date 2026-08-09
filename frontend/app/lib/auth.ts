@@ -3,10 +3,41 @@ import { authConfig } from './auth.config';
 import Credentials from 'next-auth/providers/credentials';
 import { z } from 'zod';
 import bcrypt from 'bcrypt'
-
+import 'server-only';
 
 export const { auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  session: {
+    strategy: "jwt",
+    maxAge: 15 * 60,
+  },
+  callbacks: {
+    ...authConfig.callbacks,
+
+    async jwt({ token, user }) {
+      console.log("USER TOKEN ", token, user)
+      if (user) {
+          console.log("USER -> TOKEN")
+        token.id = user.id;
+        token.username = user.username;
+        token.email = user.email;
+        console.log(token)
+      }
+
+      return token;
+    },
+
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string;
+        session.user.username = token.username as string;
+        session.user.email = token.email as string;
+      }
+
+      return session;
+    },
+  },
+
   providers: [Credentials({
       async authorize(credentials){
           console.log("credentials in auth.ts ", credentials)
@@ -32,14 +63,20 @@ export const { auth, signIn, signOut } = NextAuth({
                       }),
                   });
 
-                    const user = await response.json();
-                    console.log("user in auth.ts ", user)
-
+                    const user = {
+                        'id': 1,
+                        'username': username
+                    }
 
                   if(!response.ok){
                       return null;
                   } else if (response.ok) {
-                      return 'user created';
+                      //return user
+                      return {
+                        id: 1,
+                        username: username,
+                        email: email
+                  }
                   }
               } else if(!credentials_after_parse.success){
           console.log("invalid credentials, parsing was wrong in creating user")
@@ -93,12 +130,21 @@ export const { auth, signIn, signOut } = NextAuth({
                   console.log("passwords_check ", password, found_user_password)
                   console.log("passwords_check type ", typeof(password), typeof(found_user_password))
                   const passwords_check = await bcrypt.compare(password, found_user_password);
-                  if(passwords_check == true) return 'login success';
+
+                  if(passwords_check == true) return {
+                        id: user[0],
+                        username: user[1],
+                        email: user[2]
+                  };
               }
 
             console.log("invalid credentials, parsing was wrong in signin")
             console.log("invalid credentials, parsing was wrong in creating user")
-            return credentials_after_parse.error.issues;
+            if (credentials_after_parse.error != undefined && credentials_after_parse.error.issues != undefined){
+                return credentials_after_parse.error.issues;
+            } else {
+                return null;
+            }
           }
       console.log("pathurl was not found, or other error")
       return null;

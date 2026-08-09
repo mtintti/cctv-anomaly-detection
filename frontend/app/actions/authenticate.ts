@@ -9,9 +9,11 @@ export async function authenticate(
   formData: FormData,
 ) {
   try {
-   to_send = await signIn('credentials', formData);
-   console.log("to_send ", to_send);
-   return to_send;
+   await signIn('credentials',  {
+      ...Object.fromEntries(formData),
+      redirect: false,
+    });
+   return { 'success': true};
   } catch (error) {
       console.log("error.type ", error)
     if (error instanceof AuthError) {

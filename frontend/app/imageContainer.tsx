@@ -11,7 +11,7 @@ import AvatarProfile from "./avatar"
 import { ArrowUpDown, animateOnHover } from '../components/animate-ui/icons/arrow-up-down'
 
 export default function ImageContainer({
-  stations,
+  stations,session,
   result
 }) {
   const [selectedFile, setSelectedFile] =
@@ -132,7 +132,7 @@ export default function ImageContainer({
                 <ArrowUpDown className="h-7 w-5 cursor-pointer"/>
               </button>
           </div>
-          <AvatarProfile/>
+          <AvatarProfile session={session}/>
               {/*<button className="pt-1 justify-center text-white text-sm text-shadow-md text-shadow-slate-400/60 font-bold bg-purple-100 w-10 h-8 rounded-xl inset-shadow-sm inset-shadow-indigo-100 shadow-sm shadow-purple-400" onClick={submitHandler}>
                 Submit
               </button>*/}

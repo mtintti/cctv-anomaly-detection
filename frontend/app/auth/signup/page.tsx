@@ -1,8 +1,9 @@
 'use client'
 import { authenticate } from '../../actions/authenticate';
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import Homebutton from '@/components/homeButton'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 let errors: {
     username?: string;
@@ -12,6 +13,8 @@ let errors: {
 
 export default function Signup(){
     const [state, formAction, pending] = useActionState(authenticate, undefined)
+    const router = useRouter()
+
     console.log("formAction login ", formAction)
     console.log("pending?? ", pending)
     console.log("state?? ", state)
@@ -24,6 +27,12 @@ export default function Signup(){
             }
         }
     }
+
+    useEffect(() => {
+        if(pending === false && state != undefined && state['success'] === true){
+            router.push('/dashboard')
+        }
+    }, [pending, router])
 
     return(
         <div className="flex min-w-[360px] lg:w-screen lg:h-screen min-h-[530px] bg-zinc-100/30 p-1">

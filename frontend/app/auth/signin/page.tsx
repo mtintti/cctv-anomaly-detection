@@ -1,15 +1,26 @@
 'use client'
 import { authenticate } from '../../actions/authenticate';
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 import Homebutton from '@/components/homeButton'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 
 export default function Signin(){
     const [state, formAction, pending] = useActionState(authenticate, undefined)
+    const router = useRouter()
+
+
     console.log("formAction login ", formAction)
     console.log("pending?? ", pending)
     console.log("state?? ", state)
+
+    useEffect(() => {
+        if(pending === false && state != undefined && state['success'] === true){
+            router.push('/dashboard')
+        }
+    }, [pending, router])
+
 
 
     return(
@@ -43,7 +54,7 @@ export default function Signin(){
                     {pending === false ?
                         <button className="py-2 py-2 w-64 rounded-md hover:bg-blue-200 mt-8 text-slate-200 hover:text-white font-lg bg-slate-400/60 shadow-md/10 hover:shadow-md/20">login</button>
                         : <button className="py-2 py-2 w-64 h-4 rounded-md hover:bg-blue-200 mt-12 text-slate-400 hover:text-white font-lg bg-slate-300/60 shadow-md/10 hover:shadow-md/20"></button>}
-                    {state != undefined && state[0] === 'Invalid credentials.' && (<p className="text-sm text-red-300 ml-8 mt-2">Invalid credentials, try again</p>)}
+                    {state != undefined && state === 'Invalid credentials.' && (<p className="text-sm text-red-400 ml-8 mt-1">Invalid credentials, try again</p>)}
                   </form>
                   <div className="grid grid-cols-2 gap-2 sm:w-50">
                       <div className="w-full h-4 py-1 px-1 hover:bg-gray-200 rounded-full bg-gray-300 mt-8 shadow-lg/10"></div>
