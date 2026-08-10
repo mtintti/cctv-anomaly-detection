@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi_taskflow import TaskAdmin
 from starlette.middleware.cors import CORSMiddleware
 
-from .api import camera, stations
+from .api import camera, stations, db_routes
 from ..ml.api.predict import router, get_prediction, prediction_processing, task_manager
 from .config import logmain, logger
 from .dependecies import shared_client_start, shared_client_close
@@ -32,6 +32,7 @@ TaskAdmin(app, task_manager)
 app.include_router(camera.router)
 app.include_router(stations.router)
 app.include_router(router)
+app.include_router(db_routes.router)
 
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],  allow_credentials=True, allow_methods=["*"], allow_headers=["*"],)
 

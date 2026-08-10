@@ -2,6 +2,7 @@ import FormImage from './form-component';
 import ImageContainer from './imageContainer.tsx'
 import ParallaxHero from "./hero.tsx"
 import { get_Stations } from "./lib/get_Stations"
+import { auth } from "@/app/lib/auth";
 
 export default async function FrontPage(){
 
@@ -10,12 +11,12 @@ export default async function FrontPage(){
    //const stationsAll = await fetch("http://localhost:8000/stations", {cache: 'force-cache'});
    //const stationdata: StationsRes = await stationsAll.json();
 
-
+    const session = await auth();
     const stationdata = await get_Stations();
 
     return (
     <div className="pt-5 pb-8 z-0">
-          <ImageContainer stations={stationdata.features}/>
+          <ImageContainer stations={stationdata.features} session={session}/>
           <ParallaxHero/>
 
           {/* row features component */}
