@@ -27,7 +27,6 @@ export async function RedisURLs({predictionCardData}, i,predict_id){
         console.log("predict_id to send to POST", predict_id)
 
         const RedisURLsPost = await POST(formData, predict_id)
-        console.log("what was POST res ", RedisURLsPost)
         predictionCardData[i].jsonresponse[0].original_img = RedisURLsPost[0]
         predictionCardData[i].jsonresponse[0].prediction[0].imageBbox = RedisURLsPost[1]
         predictionCardData[i].jsonresponse[0].prediction[0].imageSeg = RedisURLsPost[2]
