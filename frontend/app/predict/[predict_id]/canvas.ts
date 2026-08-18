@@ -5,6 +5,8 @@ let canvas: HTMLCanvasElement;
 var handleRadius = 5;
 const deleteButtonRadius = handleRadius + 1;
 const deleteButtonOffsetX = 20;
+let choosen_clicked_index: number | null = null;
+let choosen_classname_for_Rect: number | null = null;
 
 
 var dragTL = false;
@@ -20,10 +22,13 @@ var startX: number, startY: number;
 
 interface RectShape {
   id: string;
+  belongs_to_img: number;
   color: string;
   stroke_color: string;
   muted_color: string,
   muted_strokecolor: string,
+  canvas_width: number,
+  canvas_height: number,
   left: number;
   top: number;
   width: number;
@@ -49,6 +54,14 @@ function notifyReact() {
 
 function makeId() {
   return `rect_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+}
+
+export function belongs_to_index(clicked_index: number){
+    console.log("BELONGS_TO_INDX")
+    console.log("belongs_to_index gotten in canvas.ts", clicked_index);
+    choosen_clicked_index = clicked_index;
+
+    return choosen_clicked_index;
 }
 
 
@@ -101,7 +114,7 @@ function deleteRect(index: number) {
 }
 
 
-export function setActiveColorClassname(colors_classname: number[] | null) {
+export function setActiveColorClassname(colors_classname: number[] | null, classname_for_Rect: number) {
 
   if (!canvas) {
     console.warn("setActiveColorClassname called before Init() — ignoring");
@@ -109,11 +122,14 @@ export function setActiveColorClassname(colors_classname: number[] | null) {
   }
   if (Array.isArray(colors_classname) && colors_classname.length === 4) {
     activeColorClassname = colors_classname;
-    console.log("color_classname in canvas.ts ", activeColorClassname)
+    //console.log("color_classname in canvas.ts ", activeColorClassname)
   } else {
     activeColorClassname = null;
-    console.log("color_classname in canvas.ts ", activeColorClassname)
+    //console.log("color_classname in canvas.ts ", activeColorClassname)
   }
+  choosen_classname_for_Rect = classname_for_Rect;
+    console.log("that is classname ", classname_for_Rect);
+    console.log("used set modular in canvas.ts", choosen_classname_for_Rect);
   drawRectInCanvas();
 }
 
@@ -132,20 +148,26 @@ function rgbaStringfor_lowered_opacity(c: number[]): string {
 function drawOneRect(r: RectShape, isActive: boolean) {
   var ctx = canvas.getContext("2d");
   if (!ctx) return;
+  let idtomatchto = choosen_clicked_index;
+
+  //console.log("r id is ", r.id)
+  //console.log("clicked index ", idtomatchto)
+  if (r.belongs_to_img != idtomatchto) return;
+
   ctx.beginPath();
   ctx.lineWidth = 2;
-  console.log("r id is ", r.id)
-  console.log("activeColorClassname is ", activeColorClassname)
+  //console.log("activeColorClassname is ", activeColorClassname)
   if(id_to_match_for_colorchange === r.id){
-      console.log("id matched!! ", r.id, id_to_match_for_colorchange)
+      //console.log("id matched!! ", r.id, id_to_match_for_colorchange)
   if(isDrawingNew != true && dragWholeRect === true && activeColorClassname != null){
     const asString_stroke_color = rgbaString(activeColorClassname);
     const asString_color = rgbaStringfor_lowered_opacity(activeColorClassname);
     r.color = asString_color;
     r.stroke_color = asString_stroke_color;
-    console.log("color and stroke_color ", r.color, r.stroke_color)
-    console.log("color changed, nulling it")
+    //console.log("color and stroke_color ", r.color, r.stroke_color)
+    //console.log("color changed, nulling it")
     r.muted_strokecolor = asString_color;
+    r.classname = choosen_classname_for_Rect;
     activeColorClassname = null;
 
     }
@@ -162,7 +184,7 @@ function drawOneRect(r: RectShape, isActive: boolean) {
 }
 
 function drawRectInCanvas() {
-    console.log("canvas in drawRectInCanvas" , canvas)
+    //console.log("canvas in drawRectInCanvas" , canvas)
   var ctx = canvas.getContext("2d");
   if (!ctx) {
     console.error("Could not get canvas 2D context");
@@ -175,7 +197,7 @@ function drawRectInCanvas() {
 
 
 function checkInRect(x: number, y: number, r: RectShape) {
-  console.log("click checking...")
+  //console.log("click checking...")
   return x > r.left && x < r.width + r.left && y > r.top && y < r.top + r.height;
 }
 
@@ -234,10 +256,10 @@ function mouseDown(e: any) {
   for (let i = rects.length - 1; i >= 0; i--) {
     if (checkInRect(mouseX, mouseY, rects[i])) {
       activeIndex = i;
-      console.log("click happened inside of rect")
-      console.log("activeIndex is", i)
-      console.log("all rects ", rects)
-      console.log("id of click", rects[i].id)
+      //console.log("click happened inside of rect")
+      //console.log("activeIndex is", i)
+      //console.log("all rects ", rects)
+      //console.log("id of click", rects[i].id)
       id_to_match_for_colorchange = rects[i].id
       dragWholeRect = true;
       startX = mouseX;
@@ -251,8 +273,9 @@ function mouseDown(e: any) {
   isDrawingNew = true;
   newRectAnchorX = mouseX;
   newRectAnchorY = mouseY;
+  //makeId()
 
-  const draft: RectShape = { id: makeId(), color: "rgba(199, 87, 231, 0.25)", stroke_color: "#c757e7" , muted_color: "rgba(120, 120, 120, 0.15)", muted_strokecolor: "#999999",left: mouseX, top: mouseY, width: 0, height: 0 };
+  const draft: RectShape = { id: makeId(), belongs_to_img: choosen_clicked_index, classname: choosen_classname_for_Rect, color: "rgba(199, 87, 231, 0.25)", stroke_color: "#c757e7" , muted_color: "rgba(120, 120, 120, 0.15)", muted_strokecolor: "#999999",canvas_width: canvas.width, canvas_height: canvas.height,left: mouseX, top: mouseY, width: 0, height: 0 };
   rects.push(draft);
   activeIndex = rects.length - 1;
 
@@ -374,8 +397,9 @@ function initCanvas(image: HTMLImageElement) {
   canvas.width = image.width;
   canvas.style.top = image.offsetTop + "px";
   canvas.style.left = image.offsetLeft + "px";
-  console.log("image ", image)
-  console.log("canvas ", canvas)
+  //console.log("image ", image)
+  //console.log("canvas ", canvas)
+  console.log("typeof canvas_height and canvas_width", typeof(canvas.height), typeof(canvas.width))
   updateCurrentCanvasRect();
 }
 

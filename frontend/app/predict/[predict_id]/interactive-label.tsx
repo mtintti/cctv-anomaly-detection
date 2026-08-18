@@ -1,9 +1,9 @@
 import React, { useState, useContext, useEffect, useRef } from "react";
 import sidebar from "../../../public/sidebar.png"
-import { Init, setActiveColorClassname } from "./canvas";
+import { Init, setActiveColorClassname, belongs_to_index } from "./canvas";
 
 
-export default function InteractiveLabeling({setopen_interactiveLabel, predictionCardData, clicked_index, setClicked_index}){
+export default function InteractiveLabeling({setopen_interactiveLabel, predictionCardData, clicked_index, setClicked_index, predict_id}){
 
     const colors = {0: [121, 212, 119, 255], 1:[234, 184, 133, 255], 2:[96, 112, 160, 255], 3: [75, 40, 163, 255], 4:[81,28,63, 255] }
 
@@ -13,17 +13,17 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
     const [dragging_bbox, setdragging_bbox] = useState(false)
     const [vis_color_classname, set_vis_color_classname] = useState(false);
     const [color_classname, set_color_classname] = useState<number[] | null>(null);
+    const [classname_for_rect, setClassname_for_rect] = useState<number[] | null>(null);
     const [color_of_picker_window, set_color_of_picker_window] = useState(null)
     const [amount_of_BoundingBoxes, set_amount_of_BoundingBoxes] = useState(0);
+    let [current_selection_of_rects, setcurrent_selection_of_rects] = useState([]);
     const [max_reached, setMax_reached] = useState(false);
-
-    console.log("color choosen ", color_classname)
+    let [sam_data, setsam_data] = useState(null)
 
     const imageRef = useRef(null);
     const canvasRef = useRef(null);
     const image = imageRef.current;
     const canvas = canvasRef.current;
-    console.log("canvasRef ",canvasRef)
 
    const visibility_dragging_bbox = () => {
         setdragging_bbox((prev) => !prev);
@@ -39,13 +39,15 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
         const initialize = () => Init(image, canvas);
         if (!imageRef.current || !canvasRef.current) return;
           return Init(imageRef.current, canvasRef.current, (updatedRects) => {
-              console.log("updatedRects was ", updatedRects)
-              console.log("updatedRects type ", typeof(updatedRects))
+
+              //clearing old rect data out of array, to replace it with new ones
+              current_selection_of_rects.length = 0;
+              current_selection_of_rects.push(updatedRects);
+
               if(updatedRects.length <= 5){
                   set_amount_of_BoundingBoxes(updatedRects.length);
                   setMax_reached(false)
               } else {
-                  console.log("max reached")
                   set_amount_of_BoundingBoxes(updatedRects.length);
                   setMax_reached(true)
               }
@@ -58,18 +60,22 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
             return () => image.removeEventListener("load", initialize);
         }
 
-   }, [dragging_bbox, clicked_index]);
+   }, [dragging_bbox]);
 
-console.log("color_classname is ", color_classname)
-console.log("color_of_picker_window is ", color_of_picker_window)
-    if(color_classname != null){
-           if (!dragging_bbox) return;
-           if (!canvasRef.current) return;
-          setActiveColorClassname(color_classname);
-          console.log("useEffect color change")
-    set_color_of_picker_window(color_classname)
-    set_color_classname(null)
+
+    if(color_classname != null && classname_for_rect != null){
+        if (!dragging_bbox) return;
+        if (!canvasRef.current) return;
+
+        setActiveColorClassname(color_classname, classname_for_rect);
+        set_color_of_picker_window(color_classname)
+        set_color_classname(null)
    }
+
+   useEffect(() => {
+       belongs_to_index(clicked_index)
+
+   }, [clicked_index]);
 
     const visibility_bbox = () => {
         sethidbbox((prev) => !prev);
@@ -81,6 +87,63 @@ console.log("color_of_picker_window is ", color_of_picker_window)
     const visibility_color_for_class_select = () => {
         set_vis_color_classname((prev) => !prev);
     };
+    // adding changeColorAndClassname to a separate function means our classname and color does both get setted to their respective values
+    // but it also leads to 'Too many re-renders' react error. if we add our set State calls to our onClick={set1 && set2} line only the first gets done, the second is always null
+    function changeColorAndClassname(colors_available, i){
+        console.log(colors_available, i)
+        set_color_classname(colors_available);
+        setClassname_for_rect(i);
+    }
+
+
+    async function sending_rects(){
+        console.log(current_selection_of_rects)
+        let last_belongs_to_img = null;
+        for(let i = 0; i < current_selection_of_rects[0].length; i++){
+
+            if(typeof(current_selection_of_rects[0][i].color) === 'string'){
+                console.log(colors[current_selection_of_rects[0][i].classname])
+                current_selection_of_rects[0][i].color = colors[current_selection_of_rects[0][i].classname]
+            }
+            console.log("belongs_to_img, ", last_belongs_to_img)
+            if(current_selection_of_rects[0][i].belongs_to_img == undefined){
+                //skipataan, image or image_name löydetty
+                continue;
+            } // lisätään alkuperäinen kuva ja kuvan nimi mukaan
+            else if(last_belongs_to_img != current_selection_of_rects[0][i].belongs_to_img){
+                last_belongs_to_img = current_selection_of_rects[0][i].belongs_to_img;
+
+                let nextAddition = [
+                    ...current_selection_of_rects[0].slice(0, i),
+                    {original_image : predictionCardData[last_belongs_to_img].jsonresponse[0].original_img},
+                    {image_name : predictionCardData[last_belongs_to_img].jsonresponse[0].belongsto},
+                    ...current_selection_of_rects[0].slice(i)
+                ];
+                current_selection_of_rects.length = 0;
+                current_selection_of_rects.push(nextAddition)
+                console.log("nextAddition is pushed", nextAddition)
+
+            }
+        }
+         const sam_api_Body = {
+            bboxes_and_images: current_selection_of_rects[0],
+        };
+        const res = await fetch(`http://localhost:8000/predict/${predict_id}/sam`,{
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sam_api_Body),
+            cache: 'no-store',
+        });
+        if (!res.ok) {
+            console.error("Request failed with status", res);
+            return;
+        }
+        if(res.ok){
+            const finished_json = await res.json();
+            let parsed_sam= JSON.parse(finished_json)
+            setsam_data(parsed_sam)
+        }
+    }
 
 
     return(
@@ -109,6 +172,11 @@ console.log("color_of_picker_window is ", color_of_picker_window)
                         <img ref={imageRef} id="full-image" className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].original_img} />
                         {hidbbox === false && (<img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox} />)}
                         {hidseg === false && (<img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageSeg} />)}
+                        {sam_data != null && (sam_data.map((sam_prediction, i) => (<div key={i}>
+                            <img className="absolute w-full h-full" src={sam_data[i].sam_items[0].finished_segmask} />
+                        </div>
+                        ))
+                    )}
                     </>
                 )}
                 {dragging_bbox === true && (<canvas ref={canvasRef} id="canvas" className="absolute h-auto w-full" />)}
@@ -134,7 +202,7 @@ console.log("color_of_picker_window is ", color_of_picker_window)
                                     {Object.values(colors).map((colors_available, i) => (<div key={i} style={{
                                     backgroundColor: `rgba(${colors_available[0]}, ${colors_available[1]}, ${colors_available[2]}, ${colors_available[3] / 255})`}}
                                     className="rounded-sm ease-in-out hover:shadow-md/30 hover:scale-90 w-6 h-6 ml-1 mr-1 my-1"
-                                    onClick={() => set_color_classname(colors_available)}></div>) )}
+                                    onClick={() => changeColorAndClassname(colors_available, i)}></div>) )}
                                  </div>
                                 )}
                                 </>
@@ -144,7 +212,7 @@ console.log("color_of_picker_window is ", color_of_picker_window)
                                     {Object.values(colors).map((colors_available, i) => (<div key={i} style={{
                                     backgroundColor: `rgba(${colors_available[0]}, ${colors_available[1]}, ${colors_available[2]}, ${colors_available[3] / 255})`}}
                                     className="rounded-sm ease-in-out hover:shadow-md/30 hover:scale-90 w-6 h-6 ml-1 mr-1 my-1"
-                                    onClick={() => set_color_classname(colors_available)}></div>) )}
+                                    onClick={() => changeColorAndClassname(colors_available, i)}></div>) )}
                                  </div>
                                 )}
                                 </> }
@@ -158,7 +226,7 @@ console.log("color_of_picker_window is ", color_of_picker_window)
                          </div>
                      </div>
                      <div className="ml-2 md:ml-40 text-sm text-gray-700 hover:bg-purple-300 bg-purple-200 inset-shadow-sm shadow-xs rounded-md px-3 py-1 justify-center">
-                        <button className="cursor-pointer">send</button>
+                        <button className="cursor-pointer" onClick={sending_rects}>send</button>
                      </div>
                 </div>
 

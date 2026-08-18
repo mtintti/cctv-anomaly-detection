@@ -30,7 +30,7 @@ task_manager = TaskManager()
 
 # Redis Client yhteyden tiedot, specifidattu settings:in kautta
 r = redis.Redis(host=settings.redishost, port=settings.redisport, username=settings.redisusername, password=settings.redispassword)
-
+exparation_time_redis = 1200 #in seconds, use 240s (3mins) for production
 router = APIRouter()
 sess = onnxruntime.InferenceSession(
     'backend/ml/best.onnx')
@@ -213,34 +213,53 @@ def encode_image(image_tochange):
 
 
 # kuvat voivat suoraan näyttää <img> tagissä kun ne on muutettu data:imgage/png base64 muotoon bufferin kautta
-def encode_image_in_batch(image_tochange):
-        print("all encode batch ", image_tochange)
-        print("all encode batch type", type(image_tochange[0]))
-        print("length of encode batch ", len(image_tochange))
-        to_use = []
-        for b in image_tochange:
-            print("to use ", len(to_use))
-            if type(b) is tuple:
+def encode_image_in_batch(image_tochange, samInference = False):
+
+        if samInference == False:
+            to_use = []
+            print("all encode batch ", image_tochange)
+            print("all encode batch type", type(image_tochange[0]))
+            print("length of encode batch ", len(image_tochange))
+            for b in image_tochange:
+                print("to use ", len(to_use))
+                if type(b) is tuple:
+                    #PIL.Image.Image muutetaan png byteksi
+                    buffer_touse = BytesIO()
+                    #print("imgage_tochange type ", type(image_tochange))
+                    b[0].save(buffer_touse, format="PNG")
+                    changedto_Bytes = buffer_touse.getvalue()
+                    encoded = base64.b64encode(changedto_Bytes)
+                    final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
+
+                    buffer_touse2 = BytesIO()
+                    # print("imgage_tochange type ", type(image_tochange))
+                    b[1].save(buffer_touse2, format="PNG")
+                    changedto_Bytes2 = buffer_touse2.getvalue()
+                    encoded2 = base64.b64encode(changedto_Bytes2)
+                    final_bytes_to_encoded_png2 = b'data:image/png;base64,' + encoded2
+                    to_use.append((final_bytes_to_encoded_png, final_bytes_to_encoded_png2))
+                else:
+                    to_use.append(b)
+            return to_use # was this, using encoded ones, changedto_Bytes
+        else:
+            print("sam inference")
+            print("all encode batch ", image_tochange)
+            print("all encode batch type", type(image_tochange[0]))
+            print("length of encode batch ", len(image_tochange))
+            to_use = []
+            for b in image_tochange:
+                print("to use ", len(to_use))
                 #PIL.Image.Image muutetaan png byteksi
                 buffer_touse = BytesIO()
-                #print("imgage_tochange type ", type(image_tochange))
-                b[0].save(buffer_touse, format="PNG")
+                print("b type ", type(b))
+                b.save(buffer_touse, format="PNG")
                 changedto_Bytes = buffer_touse.getvalue()
                 encoded = base64.b64encode(changedto_Bytes)
                 final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
 
-                buffer_touse2 = BytesIO()
-                # print("imgage_tochange type ", type(image_tochange))
-                b[1].save(buffer_touse2, format="PNG")
-                changedto_Bytes2 = buffer_touse2.getvalue()
-                encoded2 = base64.b64encode(changedto_Bytes2)
-                final_bytes_to_encoded_png2 = b'data:image/png;base64,' + encoded2
-                to_use.append((final_bytes_to_encoded_png, final_bytes_to_encoded_png2))
-            else:
-                to_use.append(b)
+                to_use.append(final_bytes_to_encoded_png)
 
-
-        return to_use # was this, using encoded ones, changedto_Bytes
+            return to_use
 
 async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID):
     try:
@@ -268,9 +287,9 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                         print("type of index b ", type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
 
                         pipe = r.pipeline()
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=240)
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox, ex=240)
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg, ex=240)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=1200)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox, ex=1200)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg, ex=1200)
                         results_setted = pipe.execute()
                         logger.info(("results_setted ",results_setted))
 
@@ -290,7 +309,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
 
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
-                imgset = r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=240)
+                imgset = r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=1200)
                 logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
@@ -501,7 +520,7 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
 
         try:
             logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
-            json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=240)
+            json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=1200)
             logger.info(("setting json meta for ", generated_predictID, "json"))
             logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
             logger.info("redis and prediction_processing finished!")
