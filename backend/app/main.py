@@ -6,6 +6,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from .api import camera, stations, db_routes
 from ..ml.api.predict import router, get_prediction, prediction_processing, task_manager
+from ..ml.api.sam import sam_router
 from .config import logmain, logger
 from .dependecies import shared_client_start, shared_client_close
 from contextlib import asynccontextmanager
@@ -33,6 +34,7 @@ app.include_router(camera.router)
 app.include_router(stations.router)
 app.include_router(router)
 app.include_router(db_routes.router)
+app.include_router(sam_router)
 
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],  allow_credentials=True, allow_methods=["*"], allow_headers=["*"],)
 

@@ -6,7 +6,7 @@ import { Fallback_ui } from './lib/fallback_ui'
 import ErrorModal from './error-modal'
 import Skeleton from './skeleton'
 import graph from '../../../public/3dicons-graph.png'
-
+import InteractiveLabeling from "./interactive-label"
 
 import {
   useQuery,
@@ -65,6 +65,7 @@ export default function PredictionMain({predict_id}:{predict_id: string}){
     const [skeletonMessage, setSkeletonMessage] = useState(null);
     const {errormodelSeeable,setErrormodelSeeable, pending, setPending} = useContext(Context);
     const [clicked_index, setClicked_index] = useState(0);
+    const [open_interactiveLabel, setopen_interactiveLabel] = useState(false)
     const isFetching_toshow = useIsFetching();
 
     const queryClient = useQueryClient()
@@ -126,13 +127,14 @@ const predictionCardData: PredictionEntry[]  =
     Array.isArray(data) ? data : Fallback_ui;
 
 console.log("pic data ", predictionCardData[clicked_index].jsonresponse[0].original_img)
-
+console.log("open_interactiveLabel?? ", open_interactiveLabel)
 
 return(
     <>
     {pending === true || skeletonMessage != null || isPending === true ? <Skeleton skeletonMessage={skeletonMessage} clicked_index_passed={clicked_index}/>
         :
-
+    <>
+    {open_interactiveLabel === true && (<div className="min-w-[360px] w-screen md:h-[600px] h-[1400px] absolute flex z-99 backdrop-blur-sm"><InteractiveLabeling setopen_interactiveLabel={setopen_interactiveLabel} predictionCardData={predictionCardData} clicked_index={clicked_index} setClicked_index={setClicked_index} predict_id={predict_id}/></div>) }
     <div className="bg-gray-100 min-w-[360px] md:py-3 md:px-3 inset-shadow-sm inset-shadow-gray-300">
                         <div className=" flex pb-4">
                             <div className={`relative min-w-[360px] md:h-[400px] w-full max-w-[800px] lg:w-[900px] h-[340px] shadow-xl shadow-gray-200`}>
@@ -171,16 +173,21 @@ return(
                             </div>
                         </div>
                         </div>
-                        <div className="col-span-2 md:col-span-2 bg-gray-300">
-                            <div className="justify-center">
+                        <div className="col-span-2 md:col-span-2">
+                        <div className="w-full h-auto min-w-[360px] max-w-[800px] lg:w-[900px]">
+                            <div className="flex flex-wrap items-start">
                                 {predictionCardData.map((curr, i) => (
                                     <div key={i}
                                      onClick={() => setClicked_index(i)}
-                                     className={`relative pr-1 flex ${i==clicked_index ? 'bg-gray-200' :'bg-slate-400'} h-full inline-block font-extralight px-2 pt-1 mt-3`}>
+                                     className={`relative pr-2 pl-2 flex ${i==clicked_index ? 'bg-gray-300' :'bg-gray-200 '} h-full inline-block font-extralight pt-2`}>
                                         {predictionCardData[i].jsonresponse[0].details[0].class_name}
                                     </div>
                                 ))}
-                                <div className="min-w-[360px] max-w-[800px] font-normal bg-gray-200 pb-4">
+                            <div className="mr-2 px-1 py-1 md:mr-0 ml-auto rounded-md place-self-end bg-slate-400 font-lg text-gray-200 hover:text-gray-100 hover:bg-slate-300 hover:cursor-pointer" onClick={() => setopen_interactiveLabel(true)}>Next</div>
+
+                            </div>
+                        </div>
+                                <div className=" min-w-[360px] max-w-[700px] font-normal bg-gray-300 pb-4">
                                     <div className="pl-10 pt-4 pr-10 grid grid-rows-1 wrap-anywhere tracking-tight font-bold">
                                     <p className="pb-2 text-base font-sm md:text-xl md:font-medium">{predictionCardData[clicked_index].jsonresponse[0].belongsto}</p>
                                     <div className="grid row-start-2 pt-2">
@@ -244,8 +251,8 @@ return(
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
+    </div>
+    </>
                     }
                 </>
 
