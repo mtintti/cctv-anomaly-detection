@@ -5,10 +5,11 @@ from fastapi_taskflow import TaskAdmin
 from starlette.middleware.cors import CORSMiddleware
 
 from .api import camera, stations, db_routes
-from ..ml.api.predict import router, get_prediction, prediction_processing, task_manager
+from .services.task_manager import task_manager
+from ..ml.api.predict import router, prediction_processing
 from ..ml.api.sam import sam_router
 from .config import logmain, logger
-from .dependecies import shared_client_start, shared_client_close
+from .dependecies import shared_client, shared_client_close, get_redis_connection, get_onnx_sess, get_client_connection
 from contextlib import asynccontextmanager
 from .services.db.database import open_pool
 
@@ -18,14 +19,14 @@ from .services.db.database import open_pool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await shared_client_start()
+    await shared_client(app)
     logmain()
     # start_timer()
     #ml_backend()
     await warmup_request()
     await open_pool()
     yield
-    await shared_client_close()
+    await shared_client_close(app)
 
 
 app = FastAPI(lifespan=lifespan)
@@ -56,17 +57,17 @@ async def warmup_request():
             prewarm_urls = [
                 'https://weathercam.digitraffic.fi/C1255902.jpg']
 
-            '''
+
             response = await prediction_processing(
                 generated_predictID=uuid.uuid4(),
                 req=mock_request,
                 file=[],
-                url=prewarm_urls
-            )
+                url=prewarm_urls,
+                do_redis=False,
+                r = app.state.r_redis, onnx_sess = app.state.sess_onnx, client = app.state.digi_traffic)
 
             logger.info(f"prewarm is successful! returned data: {response}")
-            '''
-            logger.info("prewarm is paused")
+            #logger.info("prewarm is paused")
 
         except Exception:
             logger.error("Warmup error, ", exc_info=True)

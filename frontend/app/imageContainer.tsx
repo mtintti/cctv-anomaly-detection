@@ -49,8 +49,6 @@ export default function ImageContainer({
             const res = await fetch(`http://localhost:8000/camera/${selectedBaseId}`);
             const camdata = await res.json();
             const camdata_arr =  Object.values(camdata.properties.presets);
-            console.log("camarr, ", camdata_arr)
-            console.log("current click, ", selectedStation)
             camdata_arr.forEach(function (x, i){
             if(x.id.includes(selectedStation)){
                 wanted_imgUrl = x.imageUrl;

@@ -2,23 +2,20 @@ import asyncio
 import base64
 import time
 import uuid
-from typing import Annotated
 
-import httpx
 import numpy as np
-import onnxruntime
 import starlette.datastructures
 from PIL import Image
 from io import BytesIO
 import torch
 import torchvision.ops as ops
 from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException, Response, status, \
-    Header, Depends
-from fastapi_taskflow import TaskManager
+    Depends
 from pydantic import TypeAdapter
 
-from backend.app import settings
+from backend.app.services.task_manager import task_manager
 from backend.app.config import logger, loggercrier
+from backend.app.dependecies import get_redis_connection, get_onnx_sess, get_client_connection
 
 from backend.ml.api.letterboxing import letterbox, ImgSize
 from backend.ml.api.onnxtoimg import onnx_to_img
@@ -26,19 +23,13 @@ from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predic
 import redis
 from backend.ml.api.testdatafalse import TEST_PREDICTIONS
 
-task_manager = TaskManager()
 
-# Redis Client yhteyden tiedot, specifidattu settings:in kautta
-r = redis.Redis(host=settings.redishost, port=settings.redisport, username=settings.redisusername, password=settings.redispassword)
 exparation_time_redis = 1200 #in seconds, use 240s (3mins) for production
 router = APIRouter()
-sess = onnxruntime.InferenceSession(
-    'backend/ml/best.onnx')
 
 allowed_types = {'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'JPEG', 'PNG'}
 max_size_allowed = 1024 * 1024 *25 #24mb
 
-ml_inference_log = []
 async def filecheck(f, req, size = None):
     file_size = 0
     if hasattr(f, "content_type"):  #content_type or f.format not in allowed_types:
@@ -60,8 +51,7 @@ async def filecheck(f, req, size = None):
 
     return f
 
-async def url_change_to_img(indx_for_url, req, url, client:httpx.AsyncClient, batchres):
-
+async def url_change_to_img(indx_for_url, req, url, client, batchres):
     async def checkimg(res):
         checked_img = await filecheck(res.headers["Content-Type"], req, res.headers["Content-Length"])
         bytes_from_checkedimg = res.content
@@ -77,7 +67,7 @@ async def url_change_to_img(indx_for_url, req, url, client:httpx.AsyncClient, ba
     return bytes_from_checkedimg
 
 
-async def image_process(bytes_from_img):
+async def image_process(bytes_from_img, ml_inference_log):
     # resizing original image size to onnx models expected/trained on input size of 512x512. we then change the 512x512 image to expected onnx models input in tensor form.
     # we return onnx model input, original image in PIL form, original images width, original images height
     try:
@@ -109,7 +99,7 @@ async def image_process(bytes_from_img):
         loggercrier.expection("error in image_proccess, /predict: ", exc_info=True)
 
 # Onnx model inference, gotten api image has been changed to tensor input format, letterboxed to 512x512 w x h. Def preforms inference on onnx model, NMS pruning and passes the data to further composition.
-async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found):
+async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess):
     global classname_id
 
     input = sess.get_inputs()[0].name
@@ -152,7 +142,7 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
 
 
 #batclist_encodessa laitetaan löytöjen jsonmeta data (confidence_score, class_id ja belongsto..) Itse kuvat laitetaan tuple:een (bbox, segment, json_response)
-async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID, original_img_w: int, original_img_h: int):
+async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID, original_img_w: int, original_img_h: int, ml_inference_log):
 
         logger.info(("length of final_composed_images ", len(final_composed_images)))
         start_batchlist = time.perf_counter()
@@ -261,7 +251,7 @@ def encode_image_in_batch(image_tochange, samInference = False):
 
             return to_use
 
-async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID):
+async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID, r):
     try:
         # predict_id vertaa kyseisen lähetetyn /predict requestin tietoon, jokaiseen batchlist indexistä jossa on fintraffic kuva
         # ja/tai bbox + segmentmask generoidaan uniikki id (img:{predict_id}:{redisindex}:haluttukuva) jotta monet kuvasta olevat löydöt eivät indexoidu päällekkäin. Kuvat lähetetään Redis databaseen josta ne haetaan myöhemmin omilla id_illä
@@ -333,7 +323,7 @@ def task_status(task_id: uuid.UUID):
 ## by id work, used by server component to get prediction_processing returned json.
 # Json prediction sisältää bbox ja segmask Redis urlit, (img:{predict_id}:{redisindex}:haluttukuva)
 @router.get("/predict/{predict_id}/{task_id_by_manager}")
-async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, response: Response, retry_after: Annotated[str | None, Header(convert_underscores=False)] = None,):
+async def request_results(predict_id:uuid.UUID, task_id_by_manager: uuid.UUID, response: Response, r = Depends(get_redis_connection)):
     found = None
     try:
         found = r.get(f"json_meta:{predict_id}:json")
@@ -365,7 +355,7 @@ async def request_results(predict_id:uuid.UUID,task_id_by_manager: uuid.UUID, re
 
 # haetaan redis predict_id indexissä olevat original, bbox ja segmask kuva bytes, jos indexiä ei ole palautetaan json none found.
 @router.post("/predict/{predict_id}")
-async def request_results(predict_id:uuid.UUID, response: Response, redisURL: list[str] = Form(default=[])):
+async def request_results(predict_id:uuid.UUID, response: Response, redisURL: list[str] = Form(default=[]), r = Depends(get_redis_connection)):
     try:
         logger.info("redis_URL gotten ")
         print("predict_id, ", predict_id," ", redisURL)
@@ -401,20 +391,22 @@ async def request_results(predict_id:uuid.UUID, response: Response, redisURL: li
 
 
 
-async def prediction_processing(generated_predictID, req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[])): #file: UploadFile = File(...),
+async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, client, req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[])): #file: UploadFile = File(...),
     try:
 
         toprocess = []
         json_response_all = []
         batchres = []
         batchlist = []
+        ml_inference_log = []
         print("files received:", [f.filename for f in file])
         print("urls received:", url)
         indx_for_url = 0
         print("cleared? ml_log ", len(ml_inference_log), " toprocess ",
               len(toprocess))
         belongto_name = "name"
-        client = httpx.AsyncClient()
+        logger.info(("connections", ))
+
 
         for u in url:
             toprocess.append(u)
@@ -445,7 +437,7 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
             appendable_handleimg = (timefromstart_handleimg, item)
             ml_inference_log.append(appendable_handleimg)
 
-            reswith_width_height = await image_process(bytes_from_img)
+            reswith_width_height = await image_process(bytes_from_img, ml_inference_log)
             res = reswith_width_height[0]
             original_image = reswith_width_height[1]
             original_img_w = reswith_width_height[2]
@@ -454,7 +446,7 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
             pad = reswith_width_height[5]
 
             final_composed_images, original_image_to_use = await get_predictions(res, original_image,
-                                                                                   original_img_w, original_img_h,                                                              scale, pad, objects_found)
+                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess)
 
             start_originalencode = time.perf_counter()
             encoded = await asyncio.to_thread(encode_image, original_image_to_use)
@@ -462,7 +454,7 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
             ml_inference_log.append(timefromstart_originalencode)
 
             await batchlist_encode(belongto_name, objects_found, final_composed_images, item,
-                                   batchlist, encoded, generated_predictID, original_img_w, original_img_h)
+                                   batchlist, encoded, generated_predictID, original_img_w, original_img_h, ml_inference_log)
 
         logger.info(("final batchlist length ", len(batchlist)))
 
@@ -474,7 +466,9 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
         print("length gotten from to use ", len(encoded_whole_batch))
 
         start_send_redis = time.perf_counter()
-        await encodeimageto_redis_json(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID)
+        if do_redis == True:
+            await encodeimageto_redis_json(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID, r)
+
         timefromstart_send_redis = (time.perf_counter() - start_send_redis) * 1000
         logger.info(("time for redis ", timefromstart_send_redis))
 
@@ -519,11 +513,16 @@ async def prediction_processing(generated_predictID, req: Request, file: list[Up
         logger.info("trying redis main block for sendable")
 
         try:
-            logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
-            json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=1200)
-            logger.info(("setting json meta for ", generated_predictID, "json"))
-            logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
-            logger.info("redis and prediction_processing finished!")
+            if do_redis == True:
+                logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
+                json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=1200)
+                logger.info(("setting json meta for ", generated_predictID, "json"))
+                logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
+                logger.info(("redis and prediction_processing finished!", do_redis))
+            else:
+                logger.info(("redis.set(json_meta) skipped, was False", do_redis))
+
+
 
         except redis.exceptions.ResponseError:
             loggercrier.error(("error setting jsonmeta data ", sendable))
@@ -540,24 +539,20 @@ def test():
     print("pretending to do job..")
     time.sleep(10)
 
-
-
 @task_manager.task(retries=2, delay=0.3)
 @router.post("/predict")
-async def get_prediction(req: Request, response: Response, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks)): # generated_predictID: str = Form(default=[])
+async def get_prediction(req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks), r = Depends(get_redis_connection), onnx_sess = Depends(get_onnx_sess), client = Depends(get_client_connection), do_redis = True): # generated_predictID: str = Form(default=[])
 
     print("")
     print("uuid? " ,generated_predictID)
     print("generated_predictID ", generated_predictID)
     print("type of id ", type(generated_predictID))
     print("task_manager store??", task_manager.store)
-    task_id_by_manager = tasks.add_task(prediction_processing, generated_predictID, req, file, url)
+    task_id_by_manager = tasks.add_task(prediction_processing, generated_predictID, do_redis, r, onnx_sess, client, req, file, url)
     #task_id_by_manager = tasks.add_task(test)
     print("task_manager ??", task_manager)
     print("task_id_by_manager", task_id_by_manager)
     return {"predict_id" : generated_predictID,
             "id of task" : task_id_by_manager
             }
-
-
 

@@ -1,13 +1,11 @@
+from starlette.requests import Request
 
-import psycopg_pool
 from backend.app.config import logger
-from ...dependecies import settings
-
-
-connection_info = (f"dbname={settings.db_name} "f"user={settings.db_user} "f"password={settings.db_pass} "f"host={settings.db_host} "f"port={settings.db_port}")
-pool = psycopg_pool.AsyncConnectionPool(connection_info, open=False)
+from backend.app.dependecies import get_pool
 
 async def open_pool():
+    from backend.app.main import app
+    pool = get_pool(app)
     print("\n stats: ")
     print(pool.get_stats())
     await pool.open()
@@ -17,6 +15,9 @@ async def open_pool():
 
 
 async def create_item_in_database(id, name, near, municipality, coord1, coord2, date):
+        from backend.app.main import app
+        pool = get_pool(app)
+        #pool = await get_pool(Request)
         async with pool.connection() as aconn:
             print(pool.check())
             async with aconn.cursor() as curr:
@@ -33,6 +34,8 @@ async def create_item_in_database(id, name, near, municipality, coord1, coord2, 
 
 
 async def create_item_in_db_individual(invi_id, cam_id, pre_presname, pre_url, date):
+    from backend.app.main import app
+    pool = get_pool(app)
     async with pool.connection() as aconn:
         async with aconn.cursor() as curr:
             await curr.execute(
@@ -42,6 +45,8 @@ async def create_item_in_db_individual(invi_id, cam_id, pre_presname, pre_url, d
 
 
 async def get_user_in_db(using_to_search):
+    from backend.app.main import app
+    pool = get_pool(app)
     async with pool.connection() as aconn:
         async with aconn.cursor() as curr:
             print("gotten ", using_to_search)
@@ -60,6 +65,8 @@ async def get_user_in_db(using_to_search):
 
 
 async def insert_user_in_db(username: str, email: str, password: int):
+    from backend.app.main import app
+    pool = get_pool(app)
     async with pool.connection() as aconn:
         async with aconn.cursor() as curr:
 

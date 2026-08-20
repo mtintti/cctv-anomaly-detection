@@ -9,7 +9,7 @@ from ..config import logger, loggercrier
 # saatu response Data validoidaan/parsataan vain tarvittaviin arvoihin (parts_needed),
 # käyttämällä Pedantic MainObj:tia, ja mahdollisia nested_object:teja.
 
-async def camera_station(camera_id: str, client:httpx.AsyncClient):
+async def camera_station(camera_id: str, client):
     try:
         response = await client.get(f"/stations/{camera_id}")
         response.raise_for_status()   # raises on 4xx/5xx
@@ -30,7 +30,7 @@ async def camera_station(camera_id: str, client:httpx.AsyncClient):
         loggercrier.error("Api response 502-gateway, check .log", exc_info=True)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Digitraffic API error")
 
-async def all_stations(client: httpx.AsyncClient):
+async def all_stations(client):
     try:
         response = await client.get(f"/stations")
         response.raise_for_status()   # raises on 4xx/5xx
