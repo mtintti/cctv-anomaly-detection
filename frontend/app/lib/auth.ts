@@ -50,7 +50,7 @@ export const { auth, signIn, signOut } = NextAuth({
                   var {username, email, password} = credentials_after_parse.data;
                   const salt_rounds = 10;
                   password = await bcrypt.hash(password, salt_rounds);
-                  console.log("TO SEND POST", username, email, password)
+                  console.log("TO SEND POST signup", username, email, password)
                   const response = await fetch("http://localhost:8000/auth/signup", {
                       method: "POST",
                       headers: {
@@ -110,7 +110,7 @@ export const { auth, signIn, signOut } = NextAuth({
 
               if(credentials_after_parse.success){
                   const {email, password} = credentials_after_parse.data;
-                  console.log("TO SEND POST", email, password)
+                  console.log("TO SEND POST signin", email, password)
                   const response = await fetch("http://localhost:8000/auth/signin", {
                       method: "POST",
                       headers: {

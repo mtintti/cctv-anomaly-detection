@@ -15,7 +15,8 @@ from pydantic import TypeAdapter
 
 from backend.app.services.task_manager import task_manager
 from backend.app.config import logger, loggercrier
-from backend.app.dependecies import get_redis_connection, get_onnx_sess, get_client_connection
+from backend.app.dependecies import get_redis_connection, get_onnx_sess, get_client_connection, \
+    get_fake_redis_connection
 
 from backend.ml.api.letterboxing import letterbox, ImgSize
 from backend.ml.api.onnxtoimg import onnx_to_img
@@ -207,7 +208,6 @@ def encode_image_in_batch(image_tochange, samInference = False):
 
         if samInference == False:
             to_use = []
-            print("all encode batch ", image_tochange)
             print("all encode batch type", type(image_tochange[0]))
             print("length of encode batch ", len(image_tochange))
             for b in image_tochange:
@@ -233,7 +233,6 @@ def encode_image_in_batch(image_tochange, samInference = False):
             return to_use # was this, using encoded ones, changedto_Bytes
         else:
             print("sam inference")
-            print("all encode batch ", image_tochange)
             print("all encode batch type", type(image_tochange[0]))
             print("length of encode batch ", len(image_tochange))
             to_use = []
@@ -320,6 +319,44 @@ def task_status(task_id: uuid.UUID):
         raise HTTPException(status_code=404)
     return {"status": record.status.value, "error": record.error}
 
+
+
+## by id work, used by server component to get prediction_processing returned json.
+# Json prediction sisältää bbox ja segmask Redis urlit, (img:{predict_id}:{redisindex}:haluttukuva)
+@router.post("/predict/{predict_id}/{task_id_by_manager}")
+async def request_results_with_fake_redis(req: Request, predict_id:uuid.UUID, task_id_by_manager: uuid.UUID, response: Response, fake_redis_for_tests: bool = Form(default=False)):
+    found = None
+    if fake_redis_for_tests == True:
+        print("fake redis is used again")
+        r = get_fake_redis_connection(request=req)
+        print("r is ", r)
+        found = r.get(f"json_meta:{predict_id}:json")
+        print("")
+        print("found is with fake", found)
+
+    record_by_id_of_task = task_status(task_id_by_manager)
+    print("record_by_id_of_task", record_by_id_of_task)
+    if found is None:
+
+        if record_by_id_of_task is None:
+            response.status_code = status.HTTP_404_NOT_FOUND
+            print("record by id ", record_by_id_of_task)
+            return {"none found" : predict_id, "records status" : record_by_id_of_task}
+        else:
+            #task is in inprogess or finished, and not found in Redis db
+            response.status_code = status.HTTP_201_CREATED
+            response.headers.append('Retry-After',str(3000))
+            print("HEADERS SET backend ", response.headers.keys())
+            return {"record by id of task":record_by_id_of_task, "redis db found":found}
+
+    else:
+        #foundFalse = TEST_PREDICTIONS
+        print("record by id, found JSON data", record_by_id_of_task)
+        response.status_code = status.HTTP_200_OK
+    return {"found":found, "record by id of task":record_by_id_of_task}
+
+#--
+
 ## by id work, used by server component to get prediction_processing returned json.
 # Json prediction sisältää bbox ja segmask Redis urlit, (img:{predict_id}:{redisindex}:haluttukuva)
 @router.get("/predict/{predict_id}/{task_id_by_manager}")
@@ -338,13 +375,13 @@ async def request_results(predict_id:uuid.UUID, task_id_by_manager: uuid.UUID, r
         if record_by_id_of_task is None:
             response.status_code = status.HTTP_404_NOT_FOUND
             print("record by id ", record_by_id_of_task)
-            print("found was ", found)
             return {"none found" : predict_id, "records status" : record_by_id_of_task}
         else:
+            #task is in inprogess or finished, and not found in Redis db
             response.status_code = status.HTTP_201_CREATED
-            print("found was ", found)
             response.headers.append('Retry-After',str(3000))
-            return {"record by id of task":record_by_id_of_task}
+            print("HEADERS SET backend ", response.headers.keys())
+            return {"record by id of task":record_by_id_of_task, "redis db found":found}
 
     else:
         #foundFalse = TEST_PREDICTIONS
@@ -405,7 +442,7 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
         print("cleared? ml_log ", len(ml_inference_log), " toprocess ",
               len(toprocess))
         belongto_name = "name"
-        logger.info(("connections", ))
+        logger.info(("connections for redis set as", r ))
 
 
         for u in url:
@@ -463,7 +500,6 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
         encoded_whole_batch = await asyncio.gather(
             asyncio.to_thread(encode_image_in_batch, batchlist))
         timefromstart_encode = (time.perf_counter() - start_encode) * 1000
-        print("length gotten from to use ", len(encoded_whole_batch))
 
         start_send_redis = time.perf_counter()
         if do_redis == True:
@@ -474,29 +510,23 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
 
         ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
 
-        handleling_value_ms = f"{ml_inference_log[0][0]: .2f}"
-        process_to_tensor_value_ms = f"{ml_inference_log[1]: .2f}"
-        inference_value_ms = f"{ml_inference_log[2]: .2f}"
-        bbox_seg_value_ms = f"{ml_inference_log[3]: .2f}"
-        original_encode_value_ms = f"{ml_inference_log[4]: .2f}"
-        batchlist_value_ms = f"{ml_inference_log[5]: .2f}"
-        encode_img_tag_value_ms = f"{timefromstart_encode: .2f}"
-        redis_value_ms = f"{timefromstart_send_redis: .2f}"
-        whole_value_ms = f"{ml_inference_log[-1]:.2f}"
-        metrics = Metrics(handling=handleling_value_ms, preprocess_to_tensor=process_to_tensor_value_ms, inference=inference_value_ms, bbox_and_segmask=bbox_seg_value_ms,
-                          original_img_encode=original_encode_value_ms, batchlist=batchlist_value_ms, encode_img_tag=encode_img_tag_value_ms, redis=redis_value_ms, whole_runs_time=whole_value_ms)
-        #print("json response metrics to change?", json_response_all[0])
-        #print("")
+        if do_redis == True:
+            handleling_value_ms = f"{ml_inference_log[0][0]: .2f}"
+            process_to_tensor_value_ms = f"{ml_inference_log[1]: .2f}"
+            inference_value_ms = f"{ml_inference_log[2]: .2f}"
+            bbox_seg_value_ms = f"{ml_inference_log[3]: .2f}"
+            original_encode_value_ms = f"{ml_inference_log[4]: .2f}"
+            batchlist_value_ms = f"{ml_inference_log[5]: .2f}"
+            encode_img_tag_value_ms = f"{timefromstart_encode: .2f}"
+            redis_value_ms = f"{timefromstart_send_redis: .2f}"
+            whole_value_ms = f"{ml_inference_log[-1]:.2f}"
+            metrics = Metrics(handling=handleling_value_ms, preprocess_to_tensor=process_to_tensor_value_ms, inference=inference_value_ms, bbox_and_segmask=bbox_seg_value_ms,
+                              original_img_encode=original_encode_value_ms, batchlist=batchlist_value_ms, encode_img_tag=encode_img_tag_value_ms, redis=redis_value_ms, whole_runs_time=whole_value_ms)
 
-        #print("values are" ,handleling_value_ms, process_to_tensor_value_ms, inference_value_ms, bbox_seg_value_ms, original_encode_value_ms, batchlist_value_ms, encode_img_tag_value_ms, whole_value_ms)
-        json_response_all[0].metrics = metrics
-        #print("metrics changed? ", json_response_all[0].metrics)
-        #print("all responses for final JSON ", len(json_response_all))
+            json_response_all[0].metrics = metrics
+            ta = TypeAdapter(JsonResponse)
+            sendable = ta.dump_json(json_response_all)
 
-        ta = TypeAdapter(JsonResponse)
-        sendable = ta.dump_json(json_response_all)
-        #print("internal lists, and debug: size ml_log ", len(ml_inference_log), " objects_found ", len(objects_found))
-        #print("")
         ml_inference_log.clear()
         objects_found.clear()
         toprocess.clear()
@@ -541,11 +571,21 @@ def test():
 
 @task_manager.task(retries=2, delay=0.3)
 @router.post("/predict")
-async def get_prediction(req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks), r = Depends(get_redis_connection), onnx_sess = Depends(get_onnx_sess), client = Depends(get_client_connection), do_redis = True): # generated_predictID: str = Form(default=[])
+async def get_prediction(req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks), r = Depends(get_redis_connection), onnx_sess = Depends(get_onnx_sess), client = Depends(get_client_connection), do_redis: bool = Form(default=True), fake_redis_for_tests: bool = Form(default=False)): # generated_predictID: str = Form(default=[])
 
     print("")
     print("uuid? " ,generated_predictID)
     print("generated_predictID ", generated_predictID)
+    if do_redis == True or do_redis == False:
+        print("do_redis found ", do_redis)
+    if fake_redis_for_tests == True:
+        print("fake redis is used")
+        r = get_fake_redis_connection(request=req)
+        print("r is ", r)
+    else:
+        print("fake redis is not set, cancel")
+        print("r is ", r)
+        return {"predict_id" : generated_predictID, "fake_redis_for_tests": fake_redis_for_tests}
     print("type of id ", type(generated_predictID))
     print("task_manager store??", task_manager.store)
     task_id_by_manager = tasks.add_task(prediction_processing, generated_predictID, do_redis, r, onnx_sess, client, req, file, url)
