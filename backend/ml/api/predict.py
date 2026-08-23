@@ -142,7 +142,8 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
     return final_composed_images, original_image_to_use
 
 
-#batclist_encodessa laitetaan löytöjen jsonmeta data (confidence_score, class_id ja belongsto..) Itse kuvat laitetaan tuple:een (bbox, segment, json_response)
+#batclist_encodessa laitetaan löytöjen jsonmeta data (confidence_score, class_id ja belongsto..) tiedot. Itse kuvat laitetaan tuple:een (bbox, segment, json_response)
+#batchlist_encode luodaan lista jota käytetään encode_image_in_batch function kuvan muuttamisessta PIL-> b' muotoon valmiiksi tehdystä json_response listasta jonka batchlist_encode lähettää
 async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID, original_img_w: int, original_img_h: int, ml_inference_log):
 
         logger.info(("length of final_composed_images ", len(final_composed_images)))
@@ -213,6 +214,7 @@ def encode_image_in_batch(image_tochange, samInference = False):
             for b in image_tochange:
                 print("to use ", len(to_use))
                 if type(b) is tuple:
+                    print("encode image one")
                     #PIL.Image.Image muutetaan png byteksi
                     buffer_touse = BytesIO()
                     #print("imgage_tochange type ", type(image_tochange))
@@ -222,6 +224,7 @@ def encode_image_in_batch(image_tochange, samInference = False):
                     final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
 
                     buffer_touse2 = BytesIO()
+                    print("encode image two")
                     # print("imgage_tochange type ", type(image_tochange))
                     b[1].save(buffer_touse2, format="PNG")
                     changedto_Bytes2 = buffer_touse2.getvalue()

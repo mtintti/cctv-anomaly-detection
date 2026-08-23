@@ -41,14 +41,24 @@ async def shared_client(app):
     app.state.fake_redis = fr
     app.state.sess_onnx = sess
     app.state.pool = pool
-    print("\n[FakeRedis]")
+    '''print("\n[FakeRedis]")
     print(f"server: {fakeserver}")
     print("")
     print(f"server connected?: {fakeserver.connected}")
     print("")
     print(f"redis: {fr}")
     print("")
-    print(f"setted as in app.state: {app.state.fake_redis}")
+    print(f"setted as in app.state: {app.state.fake_redis}")'''
+
+    print("\n stats: ")
+    print(app.state.pool.get_stats())
+    #pool_to_use = app.state.pool
+    await app.state.pool.open()
+    await app.state.pool.wait()
+
+    print("\n ")
+    print("connection pool is opened")
+    print(app.state.pool)
 
 
     print("\n ..dependencies done: ", client_digitraffic, client, r, fr, sess, pool)
@@ -75,10 +85,9 @@ def get_onnx_sess(request:Request):
     onnx_path = request.app.state.sess_onnx
     return onnx_path
 
-def get_pool():
-    from .main import app
-    logger.info(("app.state.pool contains",app.state.pool))
-    postgres_pool = app.state.pool
+async def get_pool(request:Request):
+    logger.info(("app.state.pool contains",request.app.state.pool))
+    postgres_pool = request.app.state.pool
     return postgres_pool
 
 

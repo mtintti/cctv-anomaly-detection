@@ -11,7 +11,6 @@ from ..ml.api.sam import sam_router
 from .config import logmain, logger
 from .dependecies import shared_client, shared_client_close, get_redis_connection, get_onnx_sess, get_client_connection
 from contextlib import asynccontextmanager
-from .services.db.database import open_pool
 
 # client (httpx.AsyncClient) on laitettuna alkamaan kun appi alkaa,
 # yield (stop) tapahtuu kun appi suljetaan. contextmanager:illa hallitaan lifecycle clientillä myöhemmin data injectionilla  (testit, docker?)
@@ -24,7 +23,7 @@ async def lifespan(app: FastAPI):
     # start_timer()
     #ml_backend()
     await warmup_request()
-    await open_pool()
+    #await open_pool()
     yield
     await shared_client_close(app)
 

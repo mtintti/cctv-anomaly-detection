@@ -71,12 +71,30 @@ export const { auth, signIn, signOut } = NextAuth({
                   if(!response.ok){
                       return null;
                   } else if (response.ok) {
+                      let response_json = await response.json()
+                      console.log("response in auth.ts ", response_json)
+                      if(response_json == null){
+                          const errors = {
+                          email: "",
+                          };
+                          errors.email = "Email unavailable to use at sign up, Login?";
+                          console.log(errors)
+                          var message = JSON.stringify(errors)
+                          throw new Error(message);
+
+                      } else {
+                          return {
+                        id: response_json,
+                        username: username,
+                        email: email
+                        }
+                      }
                       //return user
-                      return {
+                      /*return {
                         id: 1,
                         username: username,
                         email: email
-                  }
+                      }*/
                   }
               } else if(!credentials_after_parse.success){
           console.log("invalid credentials, parsing was wrong in creating user")
@@ -88,7 +106,7 @@ export const { auth, signIn, signOut } = NextAuth({
               password: "",
             };
 
-            for (const issue of credentials_after_parse.error.issues) {
+          for (const issue of credentials_after_parse.error.issues) {
               console.log("issue ",issue)
               const name = issue.path[0]
               console.log("path ",name)
@@ -98,7 +116,7 @@ export const { auth, signIn, signOut } = NextAuth({
                   name === "password") {
                 errors[name] = issue.message;
               }
-            }
+          }
           console.log(errors)
           var message = JSON.stringify(errors)
           throw new Error(message);
