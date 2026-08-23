@@ -69,13 +69,12 @@ export default function PredictionMain({predict_id}:{predict_id: string}){
     const isFetching_toshow = useIsFetching();
 
     const queryClient = useQueryClient()
-    const { isPending, error, data, isFetching } = useQuery({ queryKey: ['preds'],
+    const { isPending, error, data, isFetching } = useQuery({ queryKey: ['preds'],retry: 3,
         queryFn: async () => {
         const res = await fetch(`/api/predict/${predict_id}`,)
         for (const [key, value] of res.headers.entries()) {
           console.log(`${key}: ${value}`);
         }
-        retry: 3,
         console.log("res status set in backend to front ",res.status)
         console.log("refetch_time set ... ", refetch_time)
         console.log(typeof(Number(res.headers.get('Retry-After'))))

@@ -47,7 +47,7 @@ export default function Signup(){
                       placeholder="Username"
                       className="h-10 w-64 rounded-full hover:border bg-white px-4 shadow-lg/10"
                     />
-                    {errors.username && (<p className="text-sm text-red-400 ml-8">{errors.username}</p>)}
+                    {errors.username && (<p className="text-sm text-red-400 ml-4">{errors.username}</p>)}
 
                     <input
                       type="text"
@@ -55,7 +55,7 @@ export default function Signup(){
                       placeholder="Email"
                       className="h-10 w-64 rounded-full hover:border bg-white px-4 shadow-lg/10 mt-4"
                     />
-                    {errors.email && (<p className="text-sm text-red-400 ml-8">{errors.email}</p>)}
+                    {errors.email && (<p className="text-sm text-red-400 ml-4">{errors.email}</p>)}
 
                     <input
                       type="password"
@@ -63,7 +63,7 @@ export default function Signup(){
                       placeholder="Password"
                       className="h-10 w-64 rounded-full hover:border bg-white px-4 shadow-lg/10 mt-6"
                     />
-                    {errors.password && (<p className="text-sm text-red-400 ml-8">{errors.password}</p>)}
+                    {errors.password && (<p className="text-sm text-red-400 ml-4">{errors.password}</p>)}
                     {pending === false ? <button className="py-2 py-2 w-64 rounded-md hover:bg-blue-200 mt-12 text-slate-400 hover:text-white font-lg bg-slate-300/60 shadow-md/10 hover:shadow-md/20">signup</button>
                         :
                         <button className="py-2 py-2 w-64 h-4 rounded-md hover:bg-blue-200 mt-12 text-slate-400 hover:text-white font-lg bg-slate-300/60 shadow-md/10 hover:shadow-md/20"></button> }

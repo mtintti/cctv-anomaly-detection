@@ -1,7 +1,7 @@
 from time import sleep
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from ..dependecies import get_shared_client
 from backend.app.config import logger, loggercrier
+from ..dependecies import get_digitraffic_connection
 from ..services.db.database import create_item_in_database, create_item_in_db_individual
 from ..services.fintraffic import all_stations, camera_station
 from .timehelper import get_time
@@ -52,7 +52,7 @@ async def cameraAPIcall(idstring):
 async def task():
     print("starting api call")
     logger.info("starting station API from task")
-    data = await all_stations(get_shared_client())
+    data = await all_stations(get_digitraffic_connection())
     data_res = data.model_dump()
     count = 0
     total_calls = 0
