@@ -1,14 +1,27 @@
 import pytest
 from pydantic import ValidationError
 
+from backend.app.config import logger
+
 
 class TestClass_db_routes:
     @pytest.mark.asyncio
+    async def test_db_routes_new_user_signup(self, testclient):
+        print("")
+        print("Creating tests user")
+        response = await testclient.post("/auth/signup", json={'username':'testsCase','email': 'test_user@g.cm', 'password': '111111'})
+        response_json = response.json()
+        print("test_db_routes_new_user_signup", response_json)
+        assert response_json == 1 #one user created in db
+
+    @pytest.mark.asyncio
     async def test_db_routes_correct_user_found_signin(self, testclient):
+        print("")
+        print("tests user Login")
         response = await testclient.post("/auth/signin", json={'email': 'test_user@g.cm', 'password':'111111'})
         response_json = response.json()
-        print("test_db_routes_wrong_user", response_json)
-        assert response_json[0] == 30
+        print("test_db_routes_correct_user", response_json)
+        assert response_json[0] == 1
         assert response_json[2] == 'test_user@g.cm'
 
 
@@ -62,16 +75,19 @@ class TestClass_db_routes:
 
     @pytest.mark.asyncio
     async def test_db_routes_not_valid_email_signup(self, testclient):
+        print("")
+        print("EMAIL NOT VALID")
         with pytest.raises(ValidationError) as val_err:
             response = await testclient.post("/auth/signup",
-                                       json={'username': 'us', 'email': 'testg.cm', 'password': '11111'})
+                                           json={'username': 'us', 'email': 'testg.cm', 'password': '11111'})
             response_json = response
             print("")
             print("test_db_routes_not_email_signup", response_json)
+            print("val_error is set as", val_err.value.errors())
         errors = val_err.value.errors()
 
         email_error = next(error for error in errors
-                           if error["loc"] == ("email",))
+            if error["loc"] == ("email",))
 
         assert email_error["type"] == "value_error"
         assert "must have an @-sign" in email_error["msg"]
