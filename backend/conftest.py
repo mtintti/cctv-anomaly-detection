@@ -1,4 +1,4 @@
-'''from asyncio import WindowsSelectorEventLoopPolicy
+from asyncio import WindowsSelectorEventLoopPolicy
 
 import fakeredis
 import httpx
@@ -106,9 +106,9 @@ async def app(test_pool, creating_test_users_table):
 
     app.include_router(camera.router)
     app.include_router(stations.router)
+    app.include_router(sam_router) #router was last, caused starlet mixup on routes /predict and /predict/sam
     app.include_router(router)
     app.include_router(db_routes.router)
-    app.include_router(sam_router)
 
     async with LifespanManager(app):
         yield app
@@ -121,4 +121,4 @@ async def testclient(app):
         transport=transport,
         base_url="http://localhost:8000"
     ) as client:
-        yield client'''
+        yield client
