@@ -43,6 +43,8 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
               //clearing old rect data out of array, to replace it with new ones
               current_selection_of_rects.length = 0;
               current_selection_of_rects.push(updatedRects);
+              console.log("predict_id is ", predict_id)
+              console.log("updatedRects are", updatedRects)
 
               if(updatedRects.length <= 5){
                   set_amount_of_BoundingBoxes(updatedRects.length);
@@ -128,14 +130,19 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
          const sam_api_Body = {
             bboxes_and_images: current_selection_of_rects[0],
         };
+        console.log("sam body", typeof(sam_api_Body.bboxes_and_images))
+        console.log("sam body", sam_api_Body.bboxes_and_images)
         const res = await fetch(`http://localhost:8000/predict/${predict_id}/sam`,{
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(sam_api_Body),
             cache: 'no-store',
         });
+        console.log("res status", res.status)
         if (!res.ok) {
-            console.error("Request failed with status", res);
+            //console.error("Request failed with status", res);
+            const errorBody = await res.json().catch(() => null);
+            console.error("Request failed with status", res.status, errorBody);
             return;
         }
         if(res.ok){

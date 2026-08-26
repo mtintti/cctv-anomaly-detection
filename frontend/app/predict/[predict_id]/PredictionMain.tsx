@@ -125,7 +125,7 @@ useEffect(() => {
 const predictionCardData: PredictionEntry[]  =
     Array.isArray(data) ? data : Fallback_ui;
 
-console.log("pic data ", predictionCardData[clicked_index].jsonresponse[0].original_img)
+//console.log("pic data ", predictionCardData[clicked_index].jsonresponse[0].original_img)
 console.log("open_interactiveLabel?? ", open_interactiveLabel)
 
 return(

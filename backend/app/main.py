@@ -32,11 +32,11 @@ app = FastAPI(lifespan=lifespan)
 TaskAdmin(app, task_manager)
 app.include_router(camera.router)
 app.include_router(stations.router)
+app.include_router(sam_router)
 app.include_router(router)
 app.include_router(db_routes.router)
-app.include_router(sam_router)
 
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],  allow_credentials=True, allow_methods=["*"], allow_headers=["*"],)
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],  allow_credentials=True, allow_methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allow_headers=["*"],)
 
 
 @app.get("/")

@@ -25,7 +25,7 @@ import redis
 from backend.ml.api.testdatafalse import TEST_PREDICTIONS
 
 
-exparation_time_redis = 1200 #in seconds, use 240s (3mins) for production
+exparation_time_redis = 600 #in seconds, use 240s (3mins) for production
 router = APIRouter()
 
 allowed_types = {'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'JPEG', 'PNG'}
@@ -279,9 +279,9 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                         print("type of index b ", type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
 
                         pipe = r.pipeline()
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=1200)
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox, ex=1200)
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg, ex=1200)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox, ex=exparation_time_redis)
+                        pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg, ex=exparation_time_redis)
                         results_setted = pipe.execute()
                         logger.info(("results_setted ",results_setted))
 
@@ -301,7 +301,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
 
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
-                imgset = r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=1200)
+                imgset = r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
                 logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
@@ -548,7 +548,7 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
         try:
             if do_redis == True:
                 logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
-                json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=1200)
+                json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=exparation_time_redis)
                 logger.info(("setting json meta for ", generated_predictID, "json"))
                 logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
                 logger.info(("redis and prediction_processing finished!", do_redis))
@@ -585,10 +585,7 @@ async def get_prediction(req: Request, file: list[UploadFile] = File(default=[])
         print("fake redis is used")
         r = get_fake_redis_connection(request=req)
         print("r is ", r)
-    else:
-        print("fake redis is not set, cancel")
-        print("r is ", r)
-        return {"predict_id" : generated_predictID, "fake_redis_for_tests": fake_redis_for_tests}
+
     print("type of id ", type(generated_predictID))
     print("task_manager store??", task_manager.store)
     task_id_by_manager = tasks.add_task(prediction_processing, generated_predictID, do_redis, r, onnx_sess, client, req, file, url)
