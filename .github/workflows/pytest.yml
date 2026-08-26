@@ -38,6 +38,5 @@ jobs:
             echo "SEGANN=${{secrets.SEGANN }}" >> .env
 
         - name: Testing with made pytests
-          working-directory: ./backend
           run: |
             python -m pytest

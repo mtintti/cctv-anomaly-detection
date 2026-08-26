@@ -11,13 +11,13 @@ from fastapi import FastAPI
 from fastapi_taskflow import TaskAdmin
 from contextlib import asynccontextmanager
 from testcontainers.community.postgres import PostgresContainer
-from app.config import logmain, logger
-from app.services.task_manager import task_manager
+from backend.app.config import logmain, logger
+from backend.app.services.task_manager import task_manager
 
-from app.api import camera, stations, db_routes
-from ml.api.predict import router
-from ml.api.sam import sam_router
-from testmockonnx import MockupOnnxInferenceSession
+from backend.app.api import camera, stations, db_routes
+from backend.ml.api.predict import router
+from backend.ml.api.sam import sam_router
+from backend.testmockonnx import MockupOnnxInferenceSession
 
 container = PostgresContainer("postgres:16-alpine")
 
