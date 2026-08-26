@@ -24,6 +24,6 @@ fastapi_taskflow~=0.11.0
 pytest-asyncio~=1.4.0
 asgi-lifespan~=2.1.0
 docker~=7.2.0
-pywin32~=312; sys_platform == "win32"
+pywin32==312; sys_platform == "win32"
 testcontainers~=4.15.0
 wrapt~=2.3.0
