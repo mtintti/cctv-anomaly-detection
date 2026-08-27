@@ -1,4 +1,4 @@
-from asyncio import WindowsSelectorEventLoopPolicy
+import sys
 
 import fakeredis
 import httpx
@@ -21,7 +21,9 @@ from backend.testmockonnx import MockupOnnxInferenceSession
 
 container = PostgresContainer("postgres:16-alpine")
 
-asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+if sys.platform == 'win32':
+    from asyncio import WindowsSelectorEventLoopPolicy
+    asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
 
 @pytest_asyncio.fixture(scope="session")
 async def test_container():
