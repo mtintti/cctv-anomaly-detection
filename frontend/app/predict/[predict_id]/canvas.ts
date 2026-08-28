@@ -20,9 +20,14 @@ var newRectAnchorX: number, newRectAnchorY: number;
 var mouseX: number, mouseY: number;
 var startX: number, startY: number;
 
+let passed_sam_data = [];
+let sam_prediction_happened_boolean = false;
+
 interface RectShape {
   id: string;
   belongs_to_img: number;
+  sam_inference: string;
+  linked_with_sam_id: string;
   color: string;
   stroke_color: string;
   muted_color: string,
@@ -114,6 +119,13 @@ function deleteRect(index: number) {
 }
 
 
+export function passing_sam_data_to_canvas(sam_data){
+    passed_sam_data = sam_data
+    sam_prediction_happened_boolean = true
+    //console.log("passing_sam_data_to_canvas is ", passed_sam_data)
+    //console.log("sam_prediction_happened_boolean is ", sam_prediction_happened_boolean)
+}
+
 export function setActiveColorClassname(colors_classname: number[] | null, classname_for_Rect: number) {
 
   if (!canvas) {
@@ -128,8 +140,8 @@ export function setActiveColorClassname(colors_classname: number[] | null, class
     //console.log("color_classname in canvas.ts ", activeColorClassname)
   }
   choosen_classname_for_Rect = classname_for_Rect;
-    console.log("that is classname ", classname_for_Rect);
-    console.log("used set modular in canvas.ts", choosen_classname_for_Rect);
+    //console.log("that is classname ", classname_for_Rect);
+    //console.log("used set modular in canvas.ts", choosen_classname_for_Rect);
   drawRectInCanvas();
 }
 
@@ -256,10 +268,31 @@ function mouseDown(e: any) {
   for (let i = rects.length - 1; i >= 0; i--) {
     if (checkInRect(mouseX, mouseY, rects[i])) {
       activeIndex = i;
-      //console.log("click happened inside of rect")
-      //console.log("activeIndex is", i)
+      console.log("click happened inside of rect")
+      console.log("activeIndex is", i)
       //console.log("all rects ", rects)
-      //console.log("id of click", rects[i].id)
+      console.log("id of click", rects[i].id)
+      if (sam_prediction_happened_boolean == true){
+              //console.log("rects[i].sam_inference",rects[i].sam_inference)
+            rects[i].sam_inference = true
+            //console.log("rects[i].sam_inference",rects[i].sam_inference)
+            //console.log("all clicked sam data ", passed_sam_data)
+            if(i <= passed_sam_data.length-1){
+                //console.log("i is now ", i, "sam length is ", passed_sam_data.length-1)
+              if(passed_sam_data[i].belongs_to_rect == rects[i].id){
+                  //console.log("sam i id is ", passed_sam_data[i].belongs_to_rect)
+                  //console.log("rects[i] id is ", rects[i].id)
+                   console.log("before linked_with_sam_id?? ", rects[i].linked_with_sam_id)
+                  if(rects[i].linked_with_sam_id == false){
+                      rects[i].linked_with_sam_id = true;
+                      console.log("after linked_with_sam_id?? ", rects[i].linked_with_sam_id)
+                  } else {
+                      rects[i].linked_with_sam_id=false;
+                      console.log("after linked_with_sam_id?? ", rects[i].linked_with_sam_id)
+                  }
+              }
+            }
+        }
       id_to_match_for_colorchange = rects[i].id
       dragWholeRect = true;
       startX = mouseX;
@@ -275,7 +308,7 @@ function mouseDown(e: any) {
   newRectAnchorY = mouseY;
   //makeId()
 
-  const draft: RectShape = { id: makeId(), belongs_to_img: choosen_clicked_index, classname: choosen_classname_for_Rect, color: "rgba(199, 87, 231, 0.25)", stroke_color: "#c757e7" , muted_color: "rgba(120, 120, 120, 0.15)", muted_strokecolor: "#999999",canvas_width: canvas.width, canvas_height: canvas.height,left: mouseX, top: mouseY, width: 0, height: 0 };
+  const draft: RectShape = { id: makeId(), belongs_to_img: choosen_clicked_index,sam_inference: false, linked_with_sam_id: false, classname: choosen_classname_for_Rect, color: "rgba(199, 87, 231, 0.25)", stroke_color: "#c757e7" , muted_color: "rgba(120, 120, 120, 0.15)", muted_strokecolor: "#999999",canvas_width: canvas.width, canvas_height: canvas.height,left: mouseX, top: mouseY, width: 0, height: 0 };
   rects.push(draft);
   activeIndex = rects.length - 1;
 

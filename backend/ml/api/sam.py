@@ -75,6 +75,7 @@ def create_mask_yxz_labels(mask_Data, img_basename, classname, annotation_buffer
 
     finally:
         print("file done")
+        return buffer
 
 # käyttäjän näkemä segmentaatio maski alkuperäisen kuvan päällä, käytetään vain kuvakohtaiseen annonation.txt visuaalisointtin
 def color_coded_overlay_SAMsegmask(mask, colorcoded_class):
@@ -120,7 +121,7 @@ async def samInference(predict_id: uuid.UUID, payload: SamRequest):
                 pad = letterbox_res[2]
                 print("type of resized_img ", type(resized_img))
                 predictor.set_image(resized_img)
-
+                training_img =Image.fromarray(resized_img)
             else:
 
                 if(curr.get('image_name')):
@@ -140,28 +141,37 @@ async def samInference(predict_id: uuid.UUID, payload: SamRequest):
 
                     for i, r in enumerate(results):
                         # color_coded luokkatiedot on eritelty erillisillä väreillä, vain debuggaamiseen jotta kuvat on rajattu oikein
+                        if len(r.masks)!= 0:
+                            masks_Data = r.masks
 
-                        masks_Data = r.masks
-                        segmask = masks_Data.data[0].cpu().numpy()
-                        color_coded_overlay_SAMsegmask(segmask, colorcoded_class) #letterboxed image
+                            segmask = masks_Data.data[0].cpu().numpy()
+                            color_coded_overlay_SAMsegmask(segmask, colorcoded_class) #letterboxed image
 
-                        create_mask_yxz_labels(masks_Data, img_basename, classname, annotation_buffers)
+                            buffer = create_mask_yxz_labels(masks_Data, img_basename, classname, annotation_buffers)
 
-                        resized_segmask = rescale_segmask_coordinates(segmask, original_img_w, original_img_h)
-                        resized_segmask_np= torch.Tensor.numpy(resized_segmask)
-                        finished_segmask_to_send = color_coded_overlay_SAMsegmask(resized_segmask_np, colorcoded_class)
-                        batchlist_sam_images.append(finished_segmask_to_send)
+                            resized_segmask = rescale_segmask_coordinates(segmask, original_img_w, original_img_h)
+                            resized_segmask_np= torch.Tensor.numpy(resized_segmask)
+                            finished_segmask_to_send = color_coded_overlay_SAMsegmask(resized_segmask_np, colorcoded_class)
+                            appendable = (finished_segmask_to_send, training_img)
+                            batchlist_sam_images.append(appendable)
+                            print("buffer returned", buffer.getvalue())
 
-                        metrics = MetricsSam(speed=r.speed)
-                        samitems = samItems(finished_segmask=None, sam_metrics=metrics)
-                        responseset = samResponse(image_name=img_basename, sam_items=[samitems], annotations=None)
-                        response.append(responseset)
+                            metrics = MetricsSam(speed=r.speed)
+                            samitems = samItems(finished_segmask=None, finished_training_img=None, sam_metrics=metrics)
+                            responseset = samResponse(image_name=img_basename, belongs_to_rect=curr['id'], sam_items=[samitems], annotations=buffer.getvalue())
+                            response.append(responseset)
+                            annotation_buffers.clear()
             print("length of response", len(response))
         encoded_images_to_send = encode_image_in_batch(batchlist_sam_images, samInference=True)
 
         curr_index = 0
         for response_schema in response:
-            response_schema.sam_items[0].finished_segmask = encoded_images_to_send[curr_index]
+            pairbyindex = encoded_images_to_send[curr_index]
+            response_schema.sam_items[0].finished_segmask = pairbyindex[0]
+            response_schema.sam_items[0].finished_training_img = pairbyindex[1]
+            print("type of finished_segmask", type(pairbyindex[0]))
+            print("type of finished_training_img", type(pairbyindex[1]))
+            print("annonations??", response_schema.annotations)
             curr_index += 1
 
 
@@ -170,7 +180,7 @@ async def samInference(predict_id: uuid.UUID, payload: SamRequest):
             for name, buffer in annotation_buffers.items()
         }
 
-        response[0].annotations = annotations_payload
+        #response[0].annotations = annotations_payload
 
         ta = TypeAdapter(samResponse)
         sendable = ta.dump_json(response)

@@ -59,7 +59,7 @@ interface PredictionEntry {
 }
 
 
-export default function PredictionMain({predict_id}:{predict_id: string}){
+export default function PredictionMain({predict_id, session}){
     const [refetch_time, setRefetch_time] = useState(1000);
     const [errormodalMessage, seterrormodalMessage] = useState(null);
     const [skeletonMessage, setSkeletonMessage] = useState(null);
@@ -133,7 +133,7 @@ return(
     {pending === true || skeletonMessage != null || isPending === true ? <Skeleton skeletonMessage={skeletonMessage} clicked_index_passed={clicked_index}/>
         :
     <>
-    {open_interactiveLabel === true && (<div className="min-w-[360px] w-screen md:h-[600px] h-[1400px] absolute flex z-99 backdrop-blur-sm"><InteractiveLabeling setopen_interactiveLabel={setopen_interactiveLabel} predictionCardData={predictionCardData} clicked_index={clicked_index} setClicked_index={setClicked_index} predict_id={predict_id}/></div>) }
+    {open_interactiveLabel === true && (<div className="min-w-[360px] w-screen md:h-[600px] h-[1400px] absolute flex z-99 backdrop-blur-sm"><InteractiveLabeling setopen_interactiveLabel={setopen_interactiveLabel} predictionCardData={predictionCardData} clicked_index={clicked_index} setClicked_index={setClicked_index} predict_id={predict_id} session={session}/></div>) }
     <div className="bg-gray-100 min-w-[360px] md:py-3 md:px-3 inset-shadow-sm inset-shadow-gray-300">
                         <div className=" flex pb-4">
                             <div className={`relative min-w-[360px] md:h-[400px] w-full max-w-[800px] lg:w-[900px] h-[340px] shadow-xl shadow-gray-200`}>

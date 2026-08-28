@@ -66,3 +66,24 @@ async def insert_user_in_db(pool, username: str, email: str, password: int):
 
             except Exception:
                 logger.error("error inserting user", exc_info=True)
+
+async def inserting_pg_training(pool, constructued_training_data,user_email: str):
+    async with pool.connection() as aconn:
+        async with aconn.cursor() as curr:
+            try:
+                await curr.execute("SELECT id FROM users WHERE email = %s", (user_email,))
+                user_row = await curr.fetchone()
+                if user_row is None:
+                    print("user not found, inserting_pg_training")
+                    logger.info(("training upload rejected, unknown user email ", user_email))
+                    return None
+                else:
+                    user_id = user_row[0]
+                    #user_username = user_row[1]
+                    print("user_row all", user_row)
+                    print("user found in db, inserting training data for ",user_id)
+
+
+            except Exception:
+                logger.error("error inserting training_data", exc_info=True)
+

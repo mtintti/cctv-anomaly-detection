@@ -6,7 +6,7 @@ from backend.app.config import logger
 from backend.app.dependecies import get_pool
 from backend.app.schemas.login import Login
 from backend.app.schemas.signin import Signup
-from backend.app.services.db.database import get_user_in_db, insert_user_in_db
+from backend.app.services.db.database import get_user_in_db, insert_user_in_db, inserting_pg_training
 
 router = APIRouter(tags=["db"], responses={404: {"description": "not found :<"}})
 
@@ -34,3 +34,13 @@ async def signup_attempt(request: Request, pool = Depends(get_pool)):
     email_valid = valid_to_use['email']
     password_valid = valid_to_use['password']
     return await insert_user_in_db(pool, username_valid, email_valid, password_valid)
+
+
+@router.post("/auth/insert_postgres_training")
+async def inserting_training_data_users(request:Request, pool = Depends(get_pool)):
+    recived_sam_annonations = await request.json()
+    #print("gotten auth/insert_pg_train", recived_sam_annonations)
+    session_user_email = recived_sam_annonations.get('user_email')
+    print("user_email in auth/insert_training", session_user_email)
+    constructing_training_data = recived_sam_annonations.get("constructing_training_data")
+    return await inserting_pg_training(pool, constructing_training_data, session_user_email)
