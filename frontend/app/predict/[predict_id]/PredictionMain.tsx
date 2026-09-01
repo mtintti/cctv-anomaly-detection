@@ -127,6 +127,7 @@ const predictionCardData: PredictionEntry[]  =
 
 //console.log("pic data ", predictionCardData[clicked_index].jsonresponse[0].original_img)
 console.log("open_interactiveLabel?? ", open_interactiveLabel)
+console.log("predictionCardData[clicked_index].jsonresponse[0].prediction.length", predictionCardData[clicked_index].jsonresponse[0].prediction.length)
 
 return(
     <>
@@ -139,14 +140,15 @@ return(
                             <div className={`relative min-w-[360px] md:h-[400px] w-full max-w-[800px] lg:w-[900px] h-[340px] shadow-xl shadow-gray-200`}>
                             <div> { errormodelSeeable === true && <ErrorModal errormodalMessage={errormodalMessage}/> }</div>
                             {errormodelSeeable === false && <div>
-                                 {predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox != null ?<>
+                                 {predictionCardData[clicked_index].jsonresponse[0].prediction.length === 0 ?
+                                  <>
+                                     <img className="absolute w-full h-full " src={predictionCardData[clicked_index].jsonresponse[0].original_img}/>
+                                  </>
+                                  :
+                                  <>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].original_img}/>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox}/>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageSeg}/>
-                                    </>
-                                 :
-                                  <>
-                                     <img className="absolute w-full h-full " src={predictionCardData[clicked_index].jsonresponse[0].original_img}/>
                                   </>
                                 }
                             </div>

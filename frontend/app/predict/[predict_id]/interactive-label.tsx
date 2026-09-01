@@ -1,6 +1,7 @@
 import React, { useState, useContext, useEffect, useRef } from "react";
 import sidebar from "../../../public/sidebar.png"
 import { Init, setActiveColorClassname, belongs_to_index, passing_sam_data_to_canvas } from "./canvas";
+import { Toast } from '@base-ui/react/toast';
 
 
 export default function InteractiveLabeling({setopen_interactiveLabel, predictionCardData, clicked_index, setClicked_index, predict_id, session}){
@@ -21,6 +22,7 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
     const [loading_button, setLoading_button] = useState(false)
     const [loading_button_sam, setLoading_button_sam] = useState(false)
     let [sam_data, setsam_data] = useState(null)
+    const toastManager = Toast.useToastManager();
 
     const imageRef = useRef(null);
     const canvasRef = useRef(null);
@@ -47,11 +49,11 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
               current_selection_of_rects.push(updatedRects);
 
               //console.log("predict_id is ", predict_id)
-              //console.log("updatedRects are", updatedRects)
+              console.log("updatedRects are", updatedRects)
               setSam_predictions_to_send_length(0)
               for(let i = 0; i <updatedRects.length;i++){
                   if(updatedRects[i].linked_with_sam_id == true){
-                        setSam_predictions_to_send_length(sam_predictions_to_send_length => sam_predictions_to_send_length+1)
+                      setSam_predictions_to_send_length(sam_predictions_to_send_length => sam_predictions_to_send_length+1)
                   }
               }
                 set_amount_of_BoundingBoxes(updatedRects.length);
@@ -156,12 +158,17 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                     constructing_training_data
                   }),
             });
-            const json_res = await response.json();
-            console.log("saved by training_id ", json_res)
+            const db_json = await response.json();
             setLoading_button(false)
-        };
+            console.log("saved by training_id amount ", db_json)
+            toastManager.add({title: `${db_json.inserted_amount} saved successfully`, description: 'see saved annotations in database recents folder'})
+
+        } else {
+            setLoading_button(false)
+            toastManager.add({title: 'Not logged in', description: 'Login to send selected masks'})
+        }
     }
-    console.log("loading global? ", loading_button)
+
 
     async function sending_rects(){
         console.log("sending_rects...")
@@ -169,15 +176,26 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
         console.log("pre sam_body_constructing but in sending_rects")
         console.log(current_selection_of_rects)
         let sam_body_constructing = []
+        let no_classcolor_found = 0;
         sam_body_constructing.push(current_selection_of_rects[0]);
         console.log("current_selection_of_rects contains post", current_selection_of_rects)
         console.log("sam_body_constructing contains ", sam_body_constructing)
         //sam_body_constructing.push(current_selection_of_rects)
+
         for(let i = 0; i < sam_body_constructing[0].length; i++){
             console.log("sam_body_constructing indx", sam_body_constructing[0][i])
             if(typeof(sam_body_constructing[0][i].color) === 'string'){
-                console.log(colors[sam_body_constructing[0][i].classname])
-                sam_body_constructing[0][i].color = colors[sam_body_constructing[0][i].classname]
+                console.log("color to set for i",i, " " ,colors[sam_body_constructing[0][i].classname])
+                if(colors[sam_body_constructing[0][i].classname] != null){
+                    sam_body_constructing[0][i].color = colors[sam_body_constructing[0][i].classname]
+                } else {
+                    const data={error_message:'All bounding boxes did not have a color specified for them. Add class colors'};
+                    toastManager.add({title: 'Box classname is not selected', data})
+                    no_classcolor_found =+ 1;
+                    sam_body_constructing.length = 0;
+                    console.log("not sendable, color not found", sam_body_constructing[0])
+                    break;
+                }
             }
             console.log("belongs_to_img, ", last_belongs_to_img)
             if(sam_body_constructing[0][i].belongs_to_img == undefined){
@@ -199,30 +217,37 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
 
             }
         }
-         const sam_api_Body = {
-            bboxes_and_images: sam_body_constructing[0],
-        };
-        console.log("sam body", typeof(sam_api_Body.bboxes_and_images))
-        console.log("sam body", sam_api_Body.bboxes_and_images)
-        const res = await fetch(`http://localhost:8000/predict/${predict_id}/sam`,{
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(sam_api_Body),
-            cache: 'no-store',
-        });
-        console.log("res status", res.status)
-        if (!res.ok) {
-            //console.error("Request failed with status", res);
-            const errorBody = await res.json().catch(() => null);
-            console.error("Request failed with status", res.status, errorBody);
-            return;
-        }
-        if(res.ok){
-            const finished_json = await res.json();
-            let parsed_sam= JSON.parse(finished_json)
-            setsam_data(parsed_sam)
-            console.log("parsed_sam api data", parsed_sam)
+         console.log("no_classcolor_found amount ", no_classcolor_found)
+        if(sam_body_constructing[0] != undefined && no_classcolor_found == 0){
+             const sam_api_Body = {
+                bboxes_and_images: sam_body_constructing[0],
+            };
+            console.log("sam body", typeof(sam_api_Body.bboxes_and_images))
+            console.log("sam body", sam_api_Body.bboxes_and_images)
+            const res = await fetch(`http://localhost:8000/predict/${predict_id}/sam`,{
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(sam_api_Body),
+                cache: 'no-store',
+            });
+            console.log("res status", res.status)
+            if (!res.ok) {
+                //console.error("Request failed with status", res);
+                const errorBody = await res.json().catch(() => null);
+                console.error("Request failed with status", res.status, errorBody);
+                return;
+            }
+            if(res.ok){
+                const finished_json = await res.json();
+                let parsed_sam= JSON.parse(finished_json)
+                setsam_data(parsed_sam)
+                //console.log("parsed_sam api data", parsed_sam)
+                setLoading_button_sam(false)
+            }
+        } else {
+            //sam_body_constructing list is not sendable to backend, example. All bbox's color classnames are not set
             setLoading_button_sam(false)
+            no_classcolor_found = 0;
         }
     }
 
@@ -248,14 +273,18 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                 {predictionCardData[clicked_index].jsonresponse[0].original_img && (
                     <>
                         <img ref={imageRef} id="full-image" className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].original_img} />
-                        {hidbbox === false && (<img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox} />)}
-                        {hidseg === false && (<img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageSeg} />)}
+                        {hidbbox === false & predictionCardData[clicked_index].jsonresponse[0].prediction.length != 0 && (<img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox} />)}
+                        {hidseg === false & predictionCardData[clicked_index].jsonresponse[0].prediction.length != 0 && (<img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageSeg} />)}
                         {sam_data != null && (sam_data.map((sam_prediction, i) => {
+                            if(predictionCardData[clicked_index].jsonresponse[0].belongsto === sam_prediction.image_name){
 
                             let foundRect = undefined;
                             const rect = current_selection_of_rects.find(rect => rect[i].id)
                             if(rect != undefined && rect[i].id === sam_prediction.belongs_to_rect){
-                                //console.log("current_selection_of_rects[i].id",rect[i].id)
+
+                                //console.log(sam_data)
+                                //console.log("sam_prediction", sam_prediction)
+
                                 foundRect = rect[i];
                                 //console.log("foundRect", foundRect)
                                 //console.log("foundRect linked_with_sam_id?? ", foundRect.linked_with_sam_id)
@@ -266,6 +295,7 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                                 </div>
                             )
                             }
+                        }
                         ))}
                     </>
                 )}
@@ -341,9 +371,15 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                     <div key={i}
                         onClick={() => setClicked_index(i)}
                         className="flex-shrink-0 cursor-pointer h-10 w-18 md:h-16 md:w-24 relative ease-in-out hover:opacity-80 hover:scale-105">
-                        <img className="absolute w-full h-full object-cover" src={predictionCardData[i].jsonresponse[0].original_img} />
-                        <img className="absolute w-full h-full object-cover" src={predictionCardData[i].jsonresponse[0].prediction[0].imageBbox} />
-                        <img className="absolute w-full h-full object-cover" src={predictionCardData[i].jsonresponse[0].prediction[0].imageSeg} />
+                        {predictionCardData[i].jsonresponse[0].prediction.length === 0 ?
+                            <img className="absolute w-full h-full object-cover" src={predictionCardData[i].jsonresponse[0].original_img} />
+                        :
+                        <>
+                            <img className="absolute w-full h-full object-cover" src={predictionCardData[i].jsonresponse[0].original_img} />
+                            <img className="absolute w-full h-full object-cover" src={predictionCardData[i].jsonresponse[0].prediction[0].imageBbox} />
+                            <img className="absolute w-full h-full object-cover" src={predictionCardData[i].jsonresponse[0].prediction[0].imageSeg} />
+                        </>
+                        }
                     </div>
                 ))}
             </div>

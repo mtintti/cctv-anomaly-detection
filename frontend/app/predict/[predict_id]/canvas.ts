@@ -308,7 +308,7 @@ function mouseDown(e: any) {
   newRectAnchorY = mouseY;
   //makeId()
 
-  const draft: RectShape = { id: makeId(), belongs_to_img: choosen_clicked_index,sam_inference: false, linked_with_sam_id: false, classname: choosen_classname_for_Rect, color: "rgba(199, 87, 231, 0.25)", stroke_color: "#c757e7" , muted_color: "rgba(120, 120, 120, 0.15)", muted_strokecolor: "#999999",canvas_width: canvas.width, canvas_height: canvas.height,left: mouseX, top: mouseY, width: 0, height: 0 };
+  const draft: RectShape = { id: makeId(), belongs_to_img: choosen_clicked_index,sam_inference: false, linked_with_sam_id: false, classname: null, color: "rgba(199, 87, 231, 0.25)", stroke_color: "#c757e7" , muted_color: "rgba(120, 120, 120, 0.15)", muted_strokecolor: "#999999",canvas_width: canvas.width, canvas_height: canvas.height,left: mouseX, top: mouseY, width: 0, height: 0 };
   rects.push(draft);
   activeIndex = rects.length - 1;
 

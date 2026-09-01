@@ -81,9 +81,44 @@ async def inserting_pg_training(pool, constructued_training_data,user_email: str
                     user_id = user_row[0]
                     #user_username = user_row[1]
                     print("user_row all", user_row)
-                    print("user found in db, inserting training data for ",user_id)
+
+
+                    try:
+                        print("user found in db, inserting training data for ", user_id)
+                        image_name = None
+                        training_img = None
+                        annotations = None
+                        successful_inserts = 0
+                        for i in constructued_training_data[0]:
+                            print("type of i", type(i))
+                            print(i.keys())
+                            if i.get('image_name'):
+                                image_name = i.get('image_name')
+                                print("data to insert", image_name)
+                            if i.get('training_img'):
+                                training_img = i.get('training_img')
+                            if i.get('annonations'):
+                                annotations = i.get('annonations')
+
+                            if image_name is not None and training_img is not None and annotations is not None:
+                                print("data to insert", image_name, " ", len(training_img), " ", len(annotations))
+                                print("type of annotations", type(annotations))
+
+                                print(annotations)
+                                await curr.execute(
+                                    """INSERT INTO training_data_annotations (user_id, image_name, training_img, annotations) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, image_name) DO UPDATE SET annotations = EXCLUDED.annotations""",
+                                    (user_id, image_name, training_img, annotations))
+                                successful_inserts += len(annotations)
+                                print("successful_inserts", successful_inserts)
+                                image_name = None
+                                training_img = None
+                                annotations = None
+                        return {'inserted_amount':successful_inserts}
+
+                    except Exception:
+                        logger.error("error inserting training_data", exc_info=True)
 
 
             except Exception:
-                logger.error("error inserting training_data", exc_info=True)
+                logger.error("error inserting training_data finding user email", exc_info=True)
 
