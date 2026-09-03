@@ -9,6 +9,7 @@ import FormImage from "./form-component";
 import ImageSearch from "./cctvImageSearch";
 import AvatarProfile from "./avatar"
 import { ArrowUpDown, animateOnHover } from '../components/animate-ui/icons/arrow-up-down'
+import { House } from "lucide-react";
 
 export default function ImageContainer({
   stations,session,
@@ -87,7 +88,6 @@ export default function ImageContainer({
     console.log(byteSize(data))
 
 
-
     if(predict_id){
         setErrormodelSeeable(false)
         setPending(true)
@@ -102,7 +102,7 @@ export default function ImageContainer({
 
   return (
       <div className="flex items-baseline pl-4 min-w-[360px]">
-        <button className="text-lg" onClick={movinghome}>home</button>
+        <button className="text-lg self-center hover:cursor-pointer" onClick={movinghome}><House/></button>
 
         <div className="grid grid-cols-3 justify-items-center gap-3 pb-2 w-full">
           <FormImage

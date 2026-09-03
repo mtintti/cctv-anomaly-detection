@@ -15,13 +15,10 @@ export const { auth, signIn, signOut } = NextAuth({
     ...authConfig.callbacks,
 
     async jwt({ token, user }) {
-      console.log("USER TOKEN ", token, user)
       if (user) {
-          console.log("USER -> TOKEN")
         token.id = user.id;
         token.username = user.username;
         token.email = user.email;
-        console.log(token)
       }
 
       return token;
@@ -32,6 +29,7 @@ export const { auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string;
         session.user.username = token.username as string;
         session.user.email = token.email as string;
+        session.user.created_at = token.iat;
       }
 
       return session;

@@ -106,7 +106,7 @@ async def inserting_pg_training(pool, constructued_training_data,user_email: str
 
                                 print(annotations)
                                 await curr.execute(
-                                    """INSERT INTO training_data_annotations (user_id, image_name, training_img, annotations) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, image_name) DO UPDATE SET annotations = EXCLUDED.annotations""",
+                                    """INSERT INTO training_data_annotations (user_id, image_name, training_img, annotations) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, image_name) DO UPDATE SET annotations = training_data_annotations.annotations || EXCLUDED.annotations, updated_at=DEFAULT""",
                                     (user_id, image_name, training_img, annotations))
                                 successful_inserts += len(annotations)
                                 print("successful_inserts", successful_inserts)
@@ -122,3 +122,32 @@ async def inserting_pg_training(pool, constructued_training_data,user_email: str
             except Exception:
                 logger.error("error inserting training_data finding user email", exc_info=True)
 
+
+async def get_postgres_training_recents(pool, session_user_email):
+    async with pool.connection() as aconn:
+        async with aconn.cursor() as curr:
+            try:
+                await curr.execute("SELECT id FROM users WHERE email = %s", (session_user_email,))
+                user_row = await curr.fetchone()
+                if user_row is None:
+                    print("user not found, get_postgres_training_recents")
+                    logger.info(("training recent get rejected, unknown user email ", session_user_email))
+                    return None
+                else:
+                    user_id = user_row[0]
+                    print("user_row all", user_row)
+
+                    try:
+                        await curr.execute("SELECT id,image_name,training_img,updated_at,annotations FROM training_data_annotations WHERE user_id = %s ORDER BY updated_at DESC", (user_id,))
+                        await aconn.commit()
+                        all_returned_from_db_sql = await curr.fetchall()
+                        #print(all_returned_from_db_sql)
+                        print("length of all_returned_from_db_sql",len(all_returned_from_db_sql))
+                        #print("user recents data gotten")
+                        return all_returned_from_db_sql
+
+                    except Exception:
+                        logger.error("error getting db training_data by user", exc_info=True)
+
+            except Exception:
+                logger.error("error getting recent training_datas find user by email", exc_info=True)

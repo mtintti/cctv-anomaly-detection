@@ -69,7 +69,7 @@ export default function PredictionMain({predict_id, session}){
     const isFetching_toshow = useIsFetching();
 
     const queryClient = useQueryClient()
-    const { isPending, error, data, isFetching } = useQuery({ queryKey: ['preds'],retry: 3,
+    const { isPending, error, data, isFetching } = useQuery({ queryKey: ['preds'],retry: 3, refetchInterval: refetch_time,
         queryFn: async () => {
         const res = await fetch(`/api/predict/${predict_id}`,)
         for (const [key, value] of res.headers.entries()) {
@@ -83,7 +83,7 @@ export default function PredictionMain({predict_id, session}){
 
         return await res.json()
         },
-        refetchInterval: refetch_time,
+
     });
 
 
