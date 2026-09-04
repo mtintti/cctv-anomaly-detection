@@ -9,6 +9,8 @@ import {
 } from '@tanstack/react-query'
 import { useState, createContext, useContext } from 'react';
 import { SessionProvider } from "next-auth/react"
+import { Toast } from '@base-ui/react/toast';
+import { StackedNotifications } from './notifications/stacked-notifications';
 
 function makeQueryClient() {
   return new QueryClient({
@@ -48,13 +50,17 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
   const [errormodelSeeable, setErrormodelSeeable] = useState(false);
   const [pending, setPending] = useState(false);
+  const toastManager = Toast.createToastManager();
 
   return (
     <QueryClientProvider client={queryClient}>
         {/*<SessionProvider session={session}>*/}
+        <Toast.Provider toastManager={toastManager}>
+        <StackedNotifications/>
             <Context.Provider value={{errormodelSeeable, setErrormodelSeeable, pending, setPending}}>
                 {children}
             </Context.Provider>
+        </Toast.Provider>
     {/*</SessionProvider>*/}
     </QueryClientProvider>
   )

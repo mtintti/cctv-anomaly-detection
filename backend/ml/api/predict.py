@@ -243,13 +243,22 @@ def encode_image_in_batch(image_tochange, samInference = False):
                 print("to use ", len(to_use))
                 #PIL.Image.Image muutetaan png byteksi
                 buffer_touse = BytesIO()
-                print("b type ", type(b))
-                b.save(buffer_touse, format="PNG")
+                print("b1 type ", type(b[0]))
+                b[0].save(buffer_touse, format="PNG")
                 changedto_Bytes = buffer_touse.getvalue()
                 encoded = base64.b64encode(changedto_Bytes)
                 final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
 
-                to_use.append(final_bytes_to_encoded_png)
+                print("to use ", len(to_use))
+                # PIL.Image.Image muutetaan png byteksi
+                buffer_touse2 = BytesIO()
+                print("b2 type ", type(b[1]))
+                b[1].save(buffer_touse2, format="PNG")
+                changedto_Bytes2 = buffer_touse2.getvalue()
+                encoded2 = base64.b64encode(changedto_Bytes2)
+                final_bytes_to_encoded_png2 = b'data:image/png;base64,' + encoded2
+                appendable = final_bytes_to_encoded_png, final_bytes_to_encoded_png2
+                to_use.append(appendable)
 
             return to_use
 

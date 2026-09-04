@@ -10,9 +10,11 @@ class MetricsSam(BaseModel):
 
 class samItems(BaseModel):
     finished_segmask: str | None
+    finished_training_img: str | None
     sam_metrics: MetricsSam
 
 class samResponse(BaseModel):
     image_name: str
-    annotations: dict | None
+    belongs_to_rect: str
+    annotations: str | None
     sam_items: list[samItems]

@@ -59,7 +59,7 @@ interface PredictionEntry {
 }
 
 
-export default function PredictionMain({predict_id}:{predict_id: string}){
+export default function PredictionMain({predict_id, session}){
     const [refetch_time, setRefetch_time] = useState(1000);
     const [errormodalMessage, seterrormodalMessage] = useState(null);
     const [skeletonMessage, setSkeletonMessage] = useState(null);
@@ -69,7 +69,7 @@ export default function PredictionMain({predict_id}:{predict_id: string}){
     const isFetching_toshow = useIsFetching();
 
     const queryClient = useQueryClient()
-    const { isPending, error, data, isFetching } = useQuery({ queryKey: ['preds'],retry: 3,
+    const { isPending, error, data, isFetching } = useQuery({ queryKey: ['preds'],retry: 3, refetchInterval: refetch_time,
         queryFn: async () => {
         const res = await fetch(`/api/predict/${predict_id}`,)
         for (const [key, value] of res.headers.entries()) {
@@ -83,7 +83,7 @@ export default function PredictionMain({predict_id}:{predict_id: string}){
 
         return await res.json()
         },
-        refetchInterval: refetch_time,
+
     });
 
 
@@ -127,26 +127,28 @@ const predictionCardData: PredictionEntry[]  =
 
 //console.log("pic data ", predictionCardData[clicked_index].jsonresponse[0].original_img)
 console.log("open_interactiveLabel?? ", open_interactiveLabel)
+console.log("predictionCardData[clicked_index].jsonresponse[0].prediction.length", predictionCardData[clicked_index].jsonresponse[0].prediction.length)
 
 return(
     <>
     {pending === true || skeletonMessage != null || isPending === true ? <Skeleton skeletonMessage={skeletonMessage} clicked_index_passed={clicked_index}/>
         :
     <>
-    {open_interactiveLabel === true && (<div className="min-w-[360px] w-screen md:h-[600px] h-[1400px] absolute flex z-99 backdrop-blur-sm"><InteractiveLabeling setopen_interactiveLabel={setopen_interactiveLabel} predictionCardData={predictionCardData} clicked_index={clicked_index} setClicked_index={setClicked_index} predict_id={predict_id}/></div>) }
+    {open_interactiveLabel === true && (<div className="min-w-[360px] w-screen md:h-[600px] h-[1400px] absolute flex z-99 backdrop-blur-sm"><InteractiveLabeling setopen_interactiveLabel={setopen_interactiveLabel} predictionCardData={predictionCardData} clicked_index={clicked_index} setClicked_index={setClicked_index} predict_id={predict_id} session={session}/></div>) }
     <div className="bg-gray-100 min-w-[360px] md:py-3 md:px-3 inset-shadow-sm inset-shadow-gray-300">
                         <div className=" flex pb-4">
                             <div className={`relative min-w-[360px] md:h-[400px] w-full max-w-[800px] lg:w-[900px] h-[340px] shadow-xl shadow-gray-200`}>
                             <div> { errormodelSeeable === true && <ErrorModal errormodalMessage={errormodalMessage}/> }</div>
                             {errormodelSeeable === false && <div>
-                                 {predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox != null ?<>
+                                 {predictionCardData[clicked_index].jsonresponse[0].prediction.length === 0 ?
+                                  <>
+                                     <img className="absolute w-full h-full " src={predictionCardData[clicked_index].jsonresponse[0].original_img}/>
+                                  </>
+                                  :
+                                  <>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].original_img}/>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageBbox}/>
                                      <img className="absolute w-full h-full" src={predictionCardData[clicked_index].jsonresponse[0].prediction[0].imageSeg}/>
-                                    </>
-                                 :
-                                  <>
-                                     <img className="absolute w-full h-full " src={predictionCardData[clicked_index].jsonresponse[0].original_img}/>
                                   </>
                                 }
                             </div>

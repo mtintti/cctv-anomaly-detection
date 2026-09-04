@@ -22,7 +22,7 @@ export default async function PredictionPage({
         <div className="pt-5 z-0">
             <ImageContainer stations={stationdata.features} session={session}/>
                 <div className="pt-2 justify-center">
-                    <PredictionMain predict_id={predict_id}/>
+                    <PredictionMain predict_id={predict_id} session={session}/>
             </div>
         </div>
      )

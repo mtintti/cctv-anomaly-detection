@@ -135,8 +135,10 @@ class TestEncoding:
         )
 
     def test_encode_image_in_batch_sam_mode(self):
-        images = [
+        images = [(
             Image.new("RGB", (20, 20), "red"),
+            Image.new("RGB", (20, 20), "blue"),
+            )
         ]
 
         result = encode_image_in_batch(
@@ -145,7 +147,7 @@ class TestEncoding:
         )
 
         assert len(result) == 1
-        assert result[0].startswith(
+        assert result[0][0].startswith(
             b"data:image/png;base64,"
         )
 
