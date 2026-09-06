@@ -1,3 +1,4 @@
+import psycopg
 
 from backend.app.config import logger
 
@@ -64,7 +65,8 @@ async def insert_user_in_db(pool, username: str, email: str, password: int):
                     return user_id
 
 
-            except Exception:
+            except psycopg.Error as e:
+
                 logger.error("error inserting user", exc_info=True)
 
 async def inserting_pg_training(pool, constructued_training_data,user_email: str):
