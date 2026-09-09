@@ -1,5 +1,6 @@
 import asyncio
 
+import gevent
 import numpy as np
 import torch
 import ultralytics.utils.ops
@@ -61,7 +62,7 @@ def scale_coordinates_tensor_to_img(x_cord, y_cord, bboxw, bboxh, scale, pad):
 
 def color_and_draw_segmentation_bbox(cropped, all_colors, coords, original_rgba, final_composed_images):
     # was here final_composed_images = []
-    #print("cropped length ", len(cropped))
+    #print("cropped length in color_and_draw_segmentation_bbox ", len(cropped))
     for i in range(len(cropped)):
         cropped_invi = np.array(cropped[i])
         invidual_color = all_colors[i]
@@ -156,7 +157,7 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
     return final_composed_images
 
 
-async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found):
+async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust):
 
     indx = 0
     conf_to_pass = 0.10
@@ -166,8 +167,8 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
 
     #koska kaikki boxes on prunattu mns kautta, poistaen löydöt jotka ovat 60% tai enemmän limittäin,
     # loopataan boxes löydöt tarkistaen että mallin luokan numeron ennustettun tulos on tarpeeksi isompi kuin 10% (conf_to_pass)
+    #logger.info(("boxes length", len(boxes)))
     for x in boxes:
-
         x_cord = x[0]
         y_cord = x[1]
         bboxw = x[2]
@@ -185,7 +186,7 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
                 toadd = FoundOnnxObject(index=len(objects_found)+1, x=x_cord, y=y_cord, w=bboxw, h=bboxh, confidence_score=object_prop_score,
                                         class_id=classname_id, class_name=name, original_image_w=original_img_w, original_image_h=original_img_h, scale=scale, pad=pad)
                 #print("next is to add for " )
-                #print(" ")
+                #print("toadd in Found_objects. object passed conf_to_pass")
                 #print(toadd)
                 objects_found.append(toadd)
                 #print("info appended to objects found ", len(objects_found))
@@ -198,9 +199,11 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
         #print("finalised boxes and coeffs shape ", finalised_boxes.shape, " ", finalised_coeffs.shape)
         original_image_RGBA = original_image.convert('RGBA')
         #overlay_seg, overlay_bbox, blended_together = arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA)
-        final_composed_images = await asyncio.to_thread(arrange_full_segmentation_mask, objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
+        '''if return_for_locust != True:
+            final_composed_images = await asyncio.to_thread(arrange_full_segmentation_mask, objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
+        else:'''
+        final_composed_images = gevent.get_hub().threadpool.apply(arrange_full_segmentation_mask, args=(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images,))
         #print(" ")
-        #print("original_image_rgba is present? ", original_image_RGBA, " original rgb ", original_image)
 
         #return overlay_seg, overlay_bbox, blended_together, original_image_RGBA
         return final_composed_images, original_image_RGBA
