@@ -5,10 +5,11 @@ from fastapi.params import Depends
 from backend.app.config import logger
 from backend.app.dependecies import get_pool
 from backend.app.schemas.get_recents_training_data import Recents_training_data
+from backend.app.schemas.locust_metrics_real_db import Locust_to_postgres
 from backend.app.schemas.login import Login
 from backend.app.schemas.signin import Signup
 from backend.app.services.db.database import get_user_in_db, insert_user_in_db, inserting_pg_training, \
-    get_postgres_training_recents
+    get_postgres_training_recents, inserting_locust_comparison_metrics
 
 router = APIRouter(tags=["db"], responses={404: {"description": "not found :<"}})
 
@@ -57,3 +58,27 @@ async def get_recent_user_training_data(request:Request,email:str, pool = Depend
         #print("validated_by_schema", validated_by_schema)
         all_validated.append(validated_by_schema)
     return all_validated
+
+@router.post("/auth/metrics_to_pg_from_locust")
+async def inserting_locust_metrics_for_pred_comparison(request:Request,sendable: Locust_to_postgres, pool = Depends(get_pool)):
+    print("in /auth/metrics_to_pg_from_locust route")
+    print("gotten_from_locust", sendable)
+    job_id_locust_insert = sendable.job_id
+    job_predict_id_insert = sendable.jobs_predict_id
+    job_classnumer_id = sendable.class_id
+    job_confidence_score = sendable.confidence_score
+    image_file_handling = sendable.image_file_handling
+    preprocess_to_tensor = sendable.preprocess_to_tensor
+    inference = sendable.inference
+    bbox_and_segmask = sendable.bbox_and_segmask
+    original_img_encode = sendable.original_img_encode
+    batchlist_creation = sendable.batchlist_creation
+    encode_images = sendable.encode_images
+    redis = sendable.redis
+    whole_runs_time = sendable.whole_runs_time
+
+    insertable = Locust_to_postgres(job_id=job_id_locust_insert, jobs_predict_id=job_predict_id_insert, class_id=job_classnumer_id, confidence_score=job_confidence_score,
+                                    image_file_handling=image_file_handling, preprocess_to_tensor=preprocess_to_tensor, inference=inference,
+                                    bbox_and_segmask=bbox_and_segmask, original_img_encode=original_img_encode, batchlist_creation=batchlist_creation,
+                                    encode_images=encode_images, redis=redis,whole_runs_time=whole_runs_time)
+    gotten_from_db = await inserting_locust_comparison_metrics(pool, insertable)

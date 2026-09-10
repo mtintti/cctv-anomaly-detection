@@ -114,9 +114,9 @@ def get_onnx_sess(request:Request):
 async def get_pool(request:Request):
     logger.info(("app.state.pool contains",request.app.state.pool))
     logger.info(("all app.state items",request.app.state._state))
-    should_use_sim_locust_db_pool = request.headers.get("locust-db-loadtest") == "true"
+    should_use_sim_locust_db_pool = request.headers.get("locust-testContainer-db-loadtest") == "true"
     logger.info(request.headers.keys())
-    logger.info(("locust-db-loadtest in main's side?? ",request.headers.get("locust-db-loadtest")))
+    logger.info(("locust-db-loadtest in main's side?? ",request.headers.get("locust-testContainer-db-loadtest")))
     logger.info(should_use_sim_locust_db_pool)
     if should_use_sim_locust_db_pool:
 

@@ -3,6 +3,7 @@ import base64
 import io
 import time
 import uuid
+import zlib
 
 import gevent
 import numpy as np
@@ -263,7 +264,7 @@ def encode_image_in_batch(image_tochange, samInference = False):
 
             return to_use
 
-async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID, r):
+async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID, r, return_for_locust):
     try:
         # predict_id vertaa kyseisen lähetetyn /predict requestin tietoon, jokaiseen batchlist indexistä jossa on fintraffic kuva
         # ja/tai bbox + segmentmask generoidaan uniikki id (img:{predict_id}:{redisindex}:haluttukuva) jotta monet kuvasta olevat löydöt eivät indexoidu päällekkäin. Kuvat lähetetään Redis databaseen josta ne haetaan myöhemmin omilla id_illä
@@ -283,7 +284,6 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             final_bytes_to_resBbox = separated_invidual[b][0]
                             final_bytes_to_resSeg = separated_invidual[b][1]
 
-                            pipe = r.pipeline()
                             pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
@@ -297,7 +297,6 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             final_bytes_to_resSeg = encoded_whole_batch[b][1]
 
                             #print("type of index b ", type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
-
                             pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
@@ -305,7 +304,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             #we are at the end of batchlist, all else orig, seg and bbox images have been looped over
                             # next sending all images to redis on one go using 'global' pipe
                             if b == (len(batchlist)-1):
-                                #logger.info(("b", b, " batchlist length", (len(batchlist) - 1)))
+                                logger.info(("b", b, " batchlist length", (len(batchlist) - 1)))
                                 results_setted = await pipe.execute()
                                 logger.info(("results_setted ", results_setted))
 
@@ -333,6 +332,18 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                 json_response_all.append(l)
 
             b += 1
+        #end of looping batchlist, mimicking real redis i/o times for locust load testing if used for run
+        if return_for_locust == True:
+            if b >= 1:
+                logger.info(("b is", b))
+                secondsbase = 1.7
+                total_waiting_base_per_pred = secondsbase * b
+                logger.info(("total_waiting_base_per_pred", total_waiting_base_per_pred))
+                gevent.sleep(total_waiting_base_per_pred)
+            elif b == 0:
+                gevent.sleep(1.7)
+                logger.info(("b is", b))
+                logger.info("waited for one")
 
 
 
@@ -359,7 +370,7 @@ async def request_results_with_fake_redis(req: Request, predict_id:uuid.UUID, ta
         print("fake redis is used again")
         r = get_fake_redis_connection(request=req)
         print("r is ", r)
-        found = await r.get(f"json_meta:{predict_id}:json")
+        found = r.get(f"json_meta:{predict_id}:json")
         print("")
         print("found is with fake", found)
 
@@ -496,11 +507,13 @@ async def prediction_processing(generated_predictID, do_redis, return_for_locust
                     #locust load testing, getting bytes using buffer as .read() freezes/pauses fully without getting bytes
                     array_buf = item.file
                     bytes_from_img = io.BytesIO.getvalue(array_buf)
+                    #wait time for mimicking a real url bytes gathering for image
+                    gevent.sleep(0.3)
 
             elif type(item) == str:
                 belongto_name = item
                 indx_for_url += 1
-                bytes_from_img = await url_change_to_img(indx_for_url, req, url, client, batchres)
+                bytes_from_img = await gevent.get_hub().threadpool.apply(url_change_to_img, args=(indx_for_url, req, url, client, batchres))
             else:
                 # file is not processable, as it is not a file or a url
                 logger.info("to_process is not a file or a url. from main_prediction_loop ", exc_info=True)
@@ -542,7 +555,7 @@ async def prediction_processing(generated_predictID, do_redis, return_for_locust
 
         start_send_redis = time.perf_counter()
         if do_redis == True or return_for_locust == True:
-            await gevent.get_hub().threadpool.apply(encodeimageto_redis_json, args=(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID, r,))
+            await gevent.get_hub().threadpool.apply(encodeimageto_redis_json, args=(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID, r,return_for_locust))
 
         timefromstart_send_redis = (time.perf_counter() - start_send_redis) * 1000
         #logger.info(("time for redis ", timefromstart_send_redis))

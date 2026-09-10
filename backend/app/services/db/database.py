@@ -153,3 +153,13 @@ async def get_postgres_training_recents(pool, session_user_email):
 
             except Exception:
                 logger.error("error getting recent training_datas find user by email", exc_info=True)
+
+
+async def inserting_locust_comparison_metrics(pool, insertable):
+    async with pool.connection() as aconn:
+        async with aconn.cursor() as curr:
+            try:
+                #hello
+                print("hello from db's side")
+            except Exception:
+                logger.error("error inserting_locust_comparison_metrics by job", exc_info=True)

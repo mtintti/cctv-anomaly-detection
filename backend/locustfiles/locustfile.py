@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import json
 import os
 import time
 import uuid
@@ -10,6 +11,8 @@ import onnxruntime
 from PIL import Image
 from starlette.datastructures import Headers, UploadFile
 from starlette.requests import Request
+
+from backend.app.schemas.locust_metrics_real_db import Locust_to_postgres
 
 os.environ["PSYCOPG_WAIT_FUNC"] = "wait_select"
 import fakeredis
@@ -96,11 +99,11 @@ def _(environment, **kw):
     if environment.stats.total.fail_ratio > 0.01:
         loggercrier.error("Test failed due to failure ratio > 1%")
         environment.process_exit_code = 1
-    elif environment.stats.total.avg_response_time > 300:
-        loggercrier.error("Test failed due to average response time ratio > 300 ms")
+    elif environment.stats.total.avg_response_time > 5000:
+        loggercrier.error("Test failed due to average response time ratio > 5000 ms")
         environment.process_exit_code = 1
-    elif environment.stats.total.get_response_time_percentile(0.95) > 1000:
-        loggercrier.error("Test failed due to 95th percentile response time > 1000 ms")
+    elif environment.stats.total.get_response_time_percentile(0.95) > 5000:
+        loggercrier.error("Test failed due to 95th percentile response time > 5000 ms")
         environment.process_exit_code = 1
     else:
         environment.process_exit_code = 0
@@ -125,8 +128,8 @@ class users_db_interactions(HttpUser):
         logger.info(("type of sim_username", type(self.sim_username_predecode)))
         self.sim_username = str(self.sim_username_predecode, 'utf-8')
         logger.info(("sim user to use,", self.sim_username))
-        self.client.headers.update({"locust-db-loadtest": "true"})
-        logger.info(("locust-db-loadtest is true?",self.client.headers.get("locust-db-loadtest")))
+        self.client.headers.update({"locust-testContainer-db-loadtest": "true"})
+        logger.info(("locust-db-loadtest is true?",self.client.headers.get("locust-testContainer-db-loadtest")))
 
     @task(2)
     def creating_sim_user(self):
@@ -196,20 +199,71 @@ def running_processing_in_own_thread():
         pass
 
 
-class prediction(HttpUser):
+def processing_metrics_for_real_db(usable_json, client):
+    number_of_calls = 0
 
+    jobs_predict_id = usable_json[0]["predict_id"]
+    jobs_class_id = usable_json[0]['jsonresponse'][0]['details'][0]['class_id']
+    jobs_confidence_score = usable_json[0]['jsonresponse'][0]['details'][0]['confidence_score']
+    jobs_metrics_all = usable_json[0]['metrics']
+    #print("all metrics found??")
+    #print(jobs_metrics_all)
+    #print("type?", type(jobs_metrics_all))
+
+    jobs_metric_image_file_handling = jobs_metrics_all["handling"]
+    jobs_metric_preprocess_to_tensor = jobs_metrics_all["preprocess_to_tensor"]
+    jobs_metric_inference = jobs_metrics_all['inference']
+    jobs_metric_bbox_and_segmask = jobs_metrics_all['bbox_and_segmask']
+    jobs_metric_original_img_encode = jobs_metrics_all['original_img_encode']
+    jobs_metric_batchlist = jobs_metrics_all['batchlist']
+    jobs_metric_encode_img_tag = jobs_metrics_all['encode_img_tag']
+    jobs_metric_redis = jobs_metrics_all['redis']
+    jobs_metric_whole_runs_time = jobs_metrics_all['whole_runs_time']
+    print("job id, classnumber and confidence_score")
+    print(type(number_of_calls), type(jobs_predict_id), type(jobs_class_id), type(jobs_confidence_score))
+    print("metrics")
+    print(type(jobs_metric_image_file_handling), type(jobs_metric_preprocess_to_tensor), type(jobs_metric_inference), type(jobs_metric_bbox_and_segmask), type(jobs_metric_original_img_encode), type(jobs_metric_batchlist), type(jobs_metric_encode_img_tag), type(jobs_metric_redis), type(jobs_metric_whole_runs_time))
+    logger.info(("locust-db-loadtest is false?", client.headers.get("locust-testContainer-db-loadtest")))
+    doing_pg_insert_metrics_per_job_using_testContainer = client.headers.get("locust-testContainer-db-loadtest")
+    if doing_pg_insert_metrics_per_job_using_testContainer == 'false':
+        try:
+            sendable = Locust_to_postgres(job_id=number_of_calls, jobs_predict_id=jobs_predict_id, class_id=jobs_class_id, confidence_score=jobs_confidence_score,
+                                          image_file_handling=jobs_metric_image_file_handling, preprocess_to_tensor=jobs_metric_preprocess_to_tensor, inference=jobs_metric_inference,
+                                          bbox_and_segmask=jobs_metric_bbox_and_segmask, original_img_encode=jobs_metric_original_img_encode, batchlist_creation=jobs_metric_batchlist,
+                                          encode_images=jobs_metric_encode_img_tag, redis=jobs_metric_redis, whole_runs_time=jobs_metric_whole_runs_time)
+            logger.info(("sendable in process locust metrics??", sendable))
+            logger.info(type(sendable))
+            post_response_db = client.post('/auth/metrics_to_pg_from_locust', json=sendable.model_dump(mode="json"))
+            print("post_response_db", post_response_db)
+            number_of_calls += 1
+        except Exception as e:
+            logger.info(e)
+            loggercrier.error("error in Locust to postgres schema", exc_info=True)
+
+class prediction(HttpUser):
+    wait_time = between(1, 3)
     #käytetään gvent threadiä koska async's and await's
     # aiheuttavata corutine ongelmia luokkan kanssa/sisällä locustissa
     @task(1)
     def processing_prediction(self):
         try:
+            #self.client.headers.update({"locust-predict-metrics": "true"})
+            self.client.headers.update({"locust-testContainer-db-loadtest": "false"})
 
             startofprocessing_predictloop = time.time()
             response_length = 0
             expection_happened = None
             response_process_thread = gevent.get_hub().threadpool.apply(running_processing_in_own_thread)
             print("response from locust processing")
-            logger.info(response_process_thread)
+            print("")
+            #print("type", type(response_process_thread))
+            decoded_json_data = str(response_process_thread,'utf-8')
+            #print("type", type(decoded_json_data))
+            #print(decoded_json_data[:40])
+            usable_json = json.loads(decoded_json_data)
+            #print("")
+            #logger.info(usable_json)
+            processing_metrics_for_real_db(usable_json, self.client)
             response_length = len(str(response_process_thread))
 
         except Exception as e:
