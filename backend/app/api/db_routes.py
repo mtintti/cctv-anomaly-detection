@@ -48,16 +48,21 @@ async def inserting_training_data_users(request:Request, pool = Depends(get_pool
     constructing_training_data = recived_sam_annonations.get("constructing_training_data")
     return await inserting_pg_training(pool, constructing_training_data, session_user_email)
 
-@router.get("/auth/get_postgres_training_recents/{email}")
-async def get_recent_user_training_data(request:Request,email:str, pool = Depends(get_pool)):
+#email is set from frontend/api/auth/db_recents/route file using users session email set at login/signin token: ${session.user.email}
+@router.get("/auth/get_postgres_training_recents")
+async def get_recent_user_training_data(request:Request, pool = Depends(get_pool)):
+    email = request.headers.get('session_email')
     print("email in /auth/get_postgres_training_recents/", email)
-    gotten_from_db = await get_postgres_training_recents(pool, email)
-    all_validated = []
-    for r in gotten_from_db:
-        validated_by_schema = Recents_training_data(id=r[0],image_name=r[1], training_img=r[2], updated_at=r[3] ,annotations=r[4])
-        #print("validated_by_schema", validated_by_schema)
-        all_validated.append(validated_by_schema)
-    return all_validated
+    if email is not None:
+        gotten_from_db = await get_postgres_training_recents(pool, email)
+        all_validated = []
+        for r in gotten_from_db:
+            validated_by_schema = Recents_training_data(id=r[0],image_name=r[1], training_img=r[2], updated_at=r[3] ,annotations=r[4])
+            #print("validated_by_schema", validated_by_schema)
+            all_validated.append(validated_by_schema)
+        return all_validated
+    elif email is None:
+        return {'session_email_incorrect':email}
 
 @router.post("/auth/metrics_to_pg_from_locust")
 async def inserting_locust_metrics_for_pred_comparison(request:Request,sendable: Locust_to_postgres, pool = Depends(get_pool)):
@@ -76,9 +81,13 @@ async def inserting_locust_metrics_for_pred_comparison(request:Request,sendable:
     encode_images = sendable.encode_images
     redis = sendable.redis
     whole_runs_time = sendable.whole_runs_time
+    if job_id_locust_insert <= 100:
 
-    insertable = Locust_to_postgres(job_id=job_id_locust_insert, jobs_predict_id=job_predict_id_insert, class_id=job_classnumer_id, confidence_score=job_confidence_score,
-                                    image_file_handling=image_file_handling, preprocess_to_tensor=preprocess_to_tensor, inference=inference,
-                                    bbox_and_segmask=bbox_and_segmask, original_img_encode=original_img_encode, batchlist_creation=batchlist_creation,
-                                    encode_images=encode_images, redis=redis,whole_runs_time=whole_runs_time)
-    gotten_from_db = await inserting_locust_comparison_metrics(pool, insertable)
+        insertable = Locust_to_postgres(job_id=job_id_locust_insert, jobs_predict_id=job_predict_id_insert, class_id=job_classnumer_id, confidence_score=job_confidence_score,
+                                        image_file_handling=image_file_handling, preprocess_to_tensor=preprocess_to_tensor, inference=inference,
+                                        bbox_and_segmask=bbox_and_segmask, original_img_encode=original_img_encode, batchlist_creation=batchlist_creation,
+                                        encode_images=encode_images, redis=redis,whole_runs_time=whole_runs_time)
+        return await inserting_locust_comparison_metrics(pool, insertable.model_dump(mode="json"))
+    else:
+        return {'inserts are too large. stopping': job_id_locust_insert}
+

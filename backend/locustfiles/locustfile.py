@@ -182,25 +182,20 @@ def running_processing_in_own_thread():
             do_redis=False,
             r=app.state.r_redis,
             onnx_sess=app.state.sess_onnx,
-            # Note: client is passed, but ensure prediction_processing doesn't
-            # attempt to call HttpUser like an active HTTP framework client.
             client=app.state.digi_traffic,
             return_for_locust=True
         )
 
-        # Capture the direct output explicitly
         result = loop.run_until_complete(coro)
         return result
     except Exception as thread_exc:
         logger.error(f"Exception inside background thread execution", exc_info=True)
         return None
     finally:
-        # Keep the loop alive for subsequent tasks or clean up gracefully without crashing
         pass
 
 
-def processing_metrics_for_real_db(usable_json, client):
-    number_of_calls = 0
+def processing_metrics_for_real_db(usable_json, client, number_of_calls):
 
     jobs_predict_id = usable_json[0]["predict_id"]
     jobs_class_id = usable_json[0]['jsonresponse'][0]['details'][0]['class_id']
@@ -217,7 +212,7 @@ def processing_metrics_for_real_db(usable_json, client):
     jobs_metric_original_img_encode = jobs_metrics_all['original_img_encode']
     jobs_metric_batchlist = jobs_metrics_all['batchlist']
     jobs_metric_encode_img_tag = jobs_metrics_all['encode_img_tag']
-    jobs_metric_redis = jobs_metrics_all['redis']
+    jobs_metric_redis = jobs_metrics_all['redis'] #base amount for one prediction is 1.7 seconds. if more than 1 prediction are found in run, then 1.7 * N
     jobs_metric_whole_runs_time = jobs_metrics_all['whole_runs_time']
     print("job id, classnumber and confidence_score")
     print(type(number_of_calls), type(jobs_predict_id), type(jobs_class_id), type(jobs_confidence_score))
@@ -225,7 +220,7 @@ def processing_metrics_for_real_db(usable_json, client):
     print(type(jobs_metric_image_file_handling), type(jobs_metric_preprocess_to_tensor), type(jobs_metric_inference), type(jobs_metric_bbox_and_segmask), type(jobs_metric_original_img_encode), type(jobs_metric_batchlist), type(jobs_metric_encode_img_tag), type(jobs_metric_redis), type(jobs_metric_whole_runs_time))
     logger.info(("locust-db-loadtest is false?", client.headers.get("locust-testContainer-db-loadtest")))
     doing_pg_insert_metrics_per_job_using_testContainer = client.headers.get("locust-testContainer-db-loadtest")
-    if doing_pg_insert_metrics_per_job_using_testContainer == 'false':
+    if doing_pg_insert_metrics_per_job_using_testContainer == 'false' and 0 <= number_of_calls <= 100:
         try:
             sendable = Locust_to_postgres(job_id=number_of_calls, jobs_predict_id=jobs_predict_id, class_id=jobs_class_id, confidence_score=jobs_confidence_score,
                                           image_file_handling=jobs_metric_image_file_handling, preprocess_to_tensor=jobs_metric_preprocess_to_tensor, inference=jobs_metric_inference,
@@ -235,15 +230,25 @@ def processing_metrics_for_real_db(usable_json, client):
             logger.info(type(sendable))
             post_response_db = client.post('/auth/metrics_to_pg_from_locust', json=sendable.model_dump(mode="json"))
             print("post_response_db", post_response_db)
+            logger.info(("number of call", number_of_calls ,"and db returns "))
+            post_response_db_json = post_response_db.json()
+            logger.info(post_response_db_json)
             number_of_calls += 1
+            return number_of_calls
         except Exception as e:
             logger.info(e)
             loggercrier.error("error in Locust to postgres schema", exc_info=True)
+    else:
+        logger.info("too many inserts. 100 limit reached")
 
 class prediction(HttpUser):
     wait_time = between(1, 3)
     #käytetään gvent threadiä koska async's and await's
-    # aiheuttavata corutine ongelmia luokkan kanssa/sisällä locustissa
+    #aiheuttavata corutine ongelmia luokkan kanssa/sisällä locustissa.
+    #prediction_processing runs metrics laitetaan oikeaan postgres db:hen koska käytetään niitä referenssinä predict ml metriikkaan.
+    #lisätään confusion matriisin (TP,TN,FP,FN),sekä muut kuten Recall ja Precision sekä P99 P95 /predict api latency arvot db:hen niiden saatua
+
+    number_of_calls = 0
     @task(1)
     def processing_prediction(self):
         try:
@@ -263,7 +268,8 @@ class prediction(HttpUser):
             usable_json = json.loads(decoded_json_data)
             #print("")
             #logger.info(usable_json)
-            processing_metrics_for_real_db(usable_json, self.client)
+            added_number_of_calls = processing_metrics_for_real_db(usable_json, self.client, self.number_of_calls)
+            self.number_of_calls = added_number_of_calls
             response_length = len(str(response_process_thread))
 
         except Exception as e:
