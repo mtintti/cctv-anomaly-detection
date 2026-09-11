@@ -19,6 +19,7 @@ __pycache__/
 *.onnx
 *.png
 *.jpg
+.runs/
 
 # Environment variables
 .env

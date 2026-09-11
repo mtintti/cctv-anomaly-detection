@@ -63,7 +63,7 @@ async def warmup_request():
                 file=[],
                 url=prewarm_urls,
                 do_redis=False,
-                r = app.state.r_redis, onnx_sess = app.state.sess_onnx, client = app.state.digi_traffic)
+                r = app.state.r_redis, onnx_sess = app.state.sess_onnx, client = app.state.digi_traffic, return_for_locust=False)
 
             logger.info(f"prewarm is successful! returned data: {response}")
             #logger.info("prewarm is paused")

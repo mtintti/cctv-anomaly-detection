@@ -1,8 +1,11 @@
 import asyncio
 import base64
+import io
 import time
 import uuid
+import zlib
 
+import gevent
 import numpy as np
 import starlette.datastructures
 from PIL import Image
@@ -33,7 +36,7 @@ max_size_allowed = 1024 * 1024 *25 #24mb
 
 async def filecheck(f, req, size = None):
     file_size = 0
-    if hasattr(f, "content_type"):  #content_type or f.format not in allowed_types:
+    if hasattr(f, "content_type") or hasattr(f, "content-type"):  #content_type or f.format not in allowed_types:
         if f.content_type not in allowed_types:
             raise HTTPException(status_code=415, detail='wrong type of file, use .png, .jpg or .pdf')
         else:
@@ -75,7 +78,6 @@ async def image_process(bytes_from_img, ml_inference_log):
         start = time.perf_counter()
         image_stream = BytesIO(bytes_from_img)
         test_image = Image.open(image_stream).convert("RGB")
-        test_image.load()
 
         original_img_w, original_img_h = test_image.size
         img_arr = np.array(test_image)
@@ -97,10 +99,10 @@ async def image_process(bytes_from_img, ml_inference_log):
         ml_inference_log.append((time.perf_counter() - start) * 1000)
         return changed, test_image, original_img_w, original_img_h, scale, pad
     except Exception:
-        loggercrier.expection("error in image_proccess, /predict: ", exc_info=True)
+        loggercrier.error("error in image_proccess, /predict: ", exc_info=True)
 
 # Onnx model inference, gotten api image has been changed to tensor input format, letterboxed to 512x512 w x h. Def preforms inference on onnx model, NMS pruning and passes the data to further composition.
-async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess):
+async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess, return_for_locust):
     global classname_id
 
     input = sess.get_inputs()[0].name
@@ -126,18 +128,21 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
     pruned_output0 = []
     index = 0
 
-    for x in range(len(output0)):
-        if index_lookup[index] is x :
-            pruned_output0.append(output0[x])
-            index += 1
+    '''for x in range(len(output0)):
 
+        if index_lookup[index] <= len(index_lookup) and index_lookup[index] == x:
+            pruned_output0.append(output0[x])
+            index += 1'''
+    pruned_output0 = output0[index_lookup]
+
+    #logger.info(("pruned_output0 second indx", pruned_output0[1]))
     out0arr = np.array(pruned_output0)
 
     boxes = out0arr[:,0:6]
     coeffincies_segmasks = out0arr[:,6:]
     segmasks_prototypes = output1
 
-    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found)
+    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust)
     ml_inference_log.append((time.perf_counter() - start_decodeimg) * 1000)
     return final_composed_images, original_image_to_use
 
@@ -146,7 +151,7 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
 #batchlist_encode luodaan lista jota käytetään encode_image_in_batch function kuvan muuttamisessta PIL-> b' muotoon valmiiksi tehdystä json_response listasta jonka batchlist_encode lähettää
 async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID, original_img_w: int, original_img_h: int, ml_inference_log):
 
-        logger.info(("length of final_composed_images ", len(final_composed_images)))
+        #logger.info(("length of final_composed_images ", len(final_composed_images)))
         start_batchlist = time.perf_counter()
 
         for z in range(len(final_composed_images)):
@@ -174,7 +179,7 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                 batchlist.append(((bbox), (segmask), constructed))
 
             else:
-                logger.info("skipped showing, results were none")
+                #logger.info("skipped showing, results were none")
                 predictions = Inviprediction(imageBbox=None, imageSeg=None)
                 details = Predictiondetails(class_id=None, class_name=None, confidence_score=None)
                 jsonresponse = JsonResponse(belongsto=belongto_name, original_img=encoded_original_img, img_w=original_img_w, img_h=original_img_h,
@@ -186,7 +191,7 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                 #json_response_all.append(constructed)
                 #print("constructed none path, ", constructed)
                 batchlist.append(constructed)
-            logger.debug(("length of batchlist ", len(batchlist)))
+            #logger.debug(("length of batchlist ", len(batchlist)))
 
         timefromstart_batchlist = (time.perf_counter() - start_batchlist) * 1000
         ml_inference_log.append(timefromstart_batchlist)
@@ -209,23 +214,20 @@ def encode_image_in_batch(image_tochange, samInference = False):
 
         if samInference == False:
             to_use = []
-            print("all encode batch type", type(image_tochange[0]))
-            print("length of encode batch ", len(image_tochange))
+            #print("all encode batch type", type(image_tochange[0]))
+            #print("length of encode batch ", len(image_tochange))
             for b in image_tochange:
-                print("to use ", len(to_use))
+                #print("to use ", len(to_use))
                 if type(b) is tuple:
-                    print("encode image one")
+                    #print("encode image one")
                     #PIL.Image.Image muutetaan png byteksi
                     buffer_touse = BytesIO()
-                    #print("imgage_tochange type ", type(image_tochange))
                     b[0].save(buffer_touse, format="PNG")
                     changedto_Bytes = buffer_touse.getvalue()
                     encoded = base64.b64encode(changedto_Bytes)
                     final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
 
                     buffer_touse2 = BytesIO()
-                    print("encode image two")
-                    # print("imgage_tochange type ", type(image_tochange))
                     b[1].save(buffer_touse2, format="PNG")
                     changedto_Bytes2 = buffer_touse2.getvalue()
                     encoded2 = base64.b64encode(changedto_Bytes2)
@@ -262,37 +264,51 @@ def encode_image_in_batch(image_tochange, samInference = False):
 
             return to_use
 
-async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID, r):
+async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_all, encoded_original, generated_predictID, r, return_for_locust):
     try:
         # predict_id vertaa kyseisen lähetetyn /predict requestin tietoon, jokaiseen batchlist indexistä jossa on fintraffic kuva
         # ja/tai bbox + segmentmask generoidaan uniikki id (img:{predict_id}:{redisindex}:haluttukuva) jotta monet kuvasta olevat löydöt eivät indexoidu päällekkäin. Kuvat lähetetään Redis databaseen josta ne haetaan myöhemmin omilla id_illä
         b = 0
+        pipe = r.pipeline()
         for l in batchlist:
             redisindex = uuid.uuid4()
-            logger.info(("redisuuid is encodeimagetojson ", redisindex))
             if type(l) == tuple:
 
-                #final_bytes_to_resBbox, final_bytes_to_resSeg = await asyncio.gather(
-                    #asyncio.to_thread(encode_image, l[0]), asyncio.to_thread(encode_image, l[1]))
-
                 try:
-                    logger.info("trying redis main block")
-
+                    #logger.info("trying redis main block")
                     try:
-                        print("length of encoded whole batch ", len(encoded_whole_batch))
-                        print("length of batchlist ", len(batchlist))
-                        print("b ", b)
                         separated_invidual = encoded_whole_batch[0]
-                        final_bytes_to_resBbox = separated_invidual[b][0]
-                        final_bytes_to_resSeg = separated_invidual[b][1]
-                        print("type of index b ", type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
 
-                        pipe = r.pipeline()
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox, ex=exparation_time_redis)
-                        pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg, ex=exparation_time_redis)
-                        results_setted = pipe.execute()
-                        logger.info(("results_setted ",results_setted))
+                        if type(separated_invidual) == list:
+                            logger.info("separated_invidual is list")
+                            final_bytes_to_resBbox = separated_invidual[b][0]
+                            final_bytes_to_resSeg = separated_invidual[b][1]
+
+                            pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original,ex=exparation_time_redis)
+                            pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
+                            pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
+                            results_setted = await pipe.execute()
+                            #logger.info(("results_setted ", results_setted))
+                        elif type(separated_invidual) == tuple:
+                            #logger.info("separated_invidual is tuple")
+                            #print("encoded_whole_batch all")
+
+                            final_bytes_to_resBbox = encoded_whole_batch[b][0]
+                            final_bytes_to_resSeg = encoded_whole_batch[b][1]
+
+                            #print("type of index b ", type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
+                            pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original,ex=exparation_time_redis)
+                            pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
+                            pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
+
+                            #we are at the end of batchlist, all else orig, seg and bbox images have been looped over
+                            # next sending all images to redis on one go using 'global' pipe
+                            if b == (len(batchlist)-1):
+                                logger.info(("b", b, " batchlist length", (len(batchlist) - 1)))
+                                results_setted = await pipe.execute()
+                                logger.info(("results_setted ", results_setted))
+
+
 
                     except redis.exceptions.ResponseError:
                         loggercrier.error(("error setting data "))
@@ -310,12 +326,24 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
 
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
-                imgset = r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
-                logger.info(imgset)
+                imgset = await r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
+                #logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
 
             b += 1
+        #end of looping batchlist, mimicking real redis i/o times for locust load testing if used for run
+        if return_for_locust == True:
+            if b >= 1:
+                logger.info(("b is", b))
+                secondsbase = 1.7
+                total_waiting_base_per_pred = secondsbase * b
+                logger.info(("total_waiting_base_per_pred", total_waiting_base_per_pred))
+                gevent.sleep(total_waiting_base_per_pred)
+            elif b == 0:
+                gevent.sleep(1.7)
+                logger.info(("b is", b))
+                logger.info("waited for one")
 
 
 
@@ -375,11 +403,12 @@ async def request_results_with_fake_redis(req: Request, predict_id:uuid.UUID, ta
 async def request_results(predict_id:uuid.UUID, task_id_by_manager: uuid.UUID, response: Response, r = Depends(get_redis_connection)):
     found = None
     try:
-        found = r.get(f"json_meta:{predict_id}:json")
+        #logger.info("finding json metadata...")
+        found = await r.get(f"json_meta:{predict_id}:json")
     except redis.exceptions.ResponseError:
         logger.info("no redis index already present")
 
-    print("task_id received ", task_id_by_manager)
+    #print("task_id received ", task_id_by_manager)
     record_by_id_of_task = task_status(task_id_by_manager)
 
     if found is None:
@@ -406,20 +435,17 @@ async def request_results(predict_id:uuid.UUID, task_id_by_manager: uuid.UUID, r
 @router.post("/predict/{predict_id}")
 async def request_results(predict_id:uuid.UUID, response: Response, redisURL: list[str] = Form(default=[]), r = Depends(get_redis_connection)):
     try:
-        logger.info("redis_URL gotten ")
-        print("predict_id, ", predict_id," ", redisURL)
-        print("length of redisURL's ", len(redisURL))
+        #logger.info("redis_URL gotten ")
+        #print("predict_id, ", predict_id," ", redisURL)
+        #print("length of redisURL's ", len(redisURL))
         try:
             pipe = r.pipeline()
             for url in redisURL:
                 pipe.get(f"{url}")
-                print("url we use ", url)
+                #print("url we use ", url)
 
-            results_getted = pipe.execute()
-            logger.info(("length of .get() ",len(results_getted)))
-            logger.info(("", type(results_getted)))
-            for i in results_getted:
-                logger.info(type(i))
+            results_getted = await pipe.execute()
+
         except redis.exceptions.ResponseError:
             logger.info("no redis index already present")
 
@@ -433,14 +459,14 @@ async def request_results(predict_id:uuid.UUID, response: Response, redisURL: li
         else:
 
             response.status_code = status.HTTP_200_OK
-            print("200, length of results_getted was ", len(results_getted))
+            #print("200, length of results_getted was ", len(results_getted))
             return results_getted[0], results_getted[1], results_getted[2]
     except Exception:
         loggercrier.error("error in POST predict_id redis", exc_info=True)
 
 
 
-async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, client, req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[])): #file: UploadFile = File(...),
+async def prediction_processing(generated_predictID, do_redis, return_for_locust, r, onnx_sess, client, req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[])): #file: UploadFile = File(...),
     try:
 
         toprocess = []
@@ -448,36 +474,46 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
         batchres = []
         batchlist = []
         ml_inference_log = []
-        print("files received:", [f.filename for f in file])
-        print("urls received:", url)
+        #print("files received:", [f.filename for f in file])
+        #print("urls received:", url)
         indx_for_url = 0
-        print("cleared? ml_log ", len(ml_inference_log), " toprocess ",
-              len(toprocess))
+        '''print("cleared? ml_log ", len(ml_inference_log), " toprocess ",
+              len(toprocess))'''
         belongto_name = "name"
-        logger.info(("connections for redis set as", r ))
+        #logger.info(("connections for redis set as", r ))
 
 
         for u in url:
             toprocess.append(u)
-            print("adding ", u, " ", len(toprocess))
+            #print("adding ", u, " ", len(toprocess))
         for f in file:
             toprocess.append(f)
-            print("adding ", f, " ", len(toprocess))
+            #print("adding ", f, " ", len(toprocess))
 
-        logger.info(("final toprocess length", len(toprocess)))
+        #logger.info(("final toprocess length", len(toprocess)))
 
         start_wholerun = time.perf_counter()
         for item in toprocess:
             objects_found = []
             start_handleimg = time.perf_counter()
             if type(item) == starlette.datastructures.UploadFile:
+
                 belongto_name = item.filename
                 filebool = await filecheck(item, req)
-                bytes_from_img = await filebool.read()
+                if return_for_locust == False:
+                    bytes_from_img = await filebool.read()
+                    #logger.info(bytes_from_img)
+                else:
+                    #locust load testing, getting bytes using buffer as .read() freezes/pauses fully without getting bytes
+                    array_buf = item.file
+                    bytes_from_img = io.BytesIO.getvalue(array_buf)
+                    #wait time for mimicking a real url bytes gathering for image
+                    gevent.sleep(0.3)
+
             elif type(item) == str:
                 belongto_name = item
                 indx_for_url += 1
-                bytes_from_img = await url_change_to_img(indx_for_url, req, url, client, batchres)
+                bytes_from_img = await gevent.get_hub().threadpool.apply(url_change_to_img, args=(indx_for_url, req, url, client, batchres))
             else:
                 # file is not processable, as it is not a file or a url
                 logger.info("to_process is not a file or a url. from main_prediction_loop ", exc_info=True)
@@ -485,7 +521,6 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
             timefromstart_handleimg = (time.perf_counter() - start_handleimg) * 1000
             appendable_handleimg = (timefromstart_handleimg, item)
             ml_inference_log.append(appendable_handleimg)
-
             reswith_width_height = await image_process(bytes_from_img, ml_inference_log)
             res = reswith_width_height[0]
             original_image = reswith_width_height[1]
@@ -495,34 +530,39 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
             pad = reswith_width_height[5]
 
             final_composed_images, original_image_to_use = await get_predictions(res, original_image,
-                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess)
+                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess, return_for_locust)
 
             start_originalencode = time.perf_counter()
-            encoded = await asyncio.to_thread(encode_image, original_image_to_use)
+            '''if return_for_locust == False:
+                encoded = await asyncio.to_thread(encode_image, original_image_to_use)
+            else:'''
+            encoded = gevent.get_hub().threadpool.apply(encode_image, args=(original_image_to_use,))
             timefromstart_originalencode = (time.perf_counter() - start_originalencode) * 1000
             ml_inference_log.append(timefromstart_originalencode)
-
             await batchlist_encode(belongto_name, objects_found, final_composed_images, item,
                                    batchlist, encoded, generated_predictID, original_img_w, original_img_h, ml_inference_log)
 
-        logger.info(("final batchlist length ", len(batchlist)))
+        #logger.info(("final batchlist length ", len(batchlist)))
 
         start_encode = time.perf_counter()
         #await encodeimageto_redis_json(batchlist, json_response_all, item, encoded, generated_predictID)
-        encoded_whole_batch = await asyncio.gather(
-            asyncio.to_thread(encode_image_in_batch, batchlist))
+        '''if return_for_locust == False:
+            encoded_whole_batch = await asyncio.gather(
+                asyncio.to_thread(encode_image_in_batch, batchlist))
+        else:'''
+        encoded_whole_batch = gevent.get_hub().threadpool.apply(encode_image_in_batch, args=(batchlist,))
         timefromstart_encode = (time.perf_counter() - start_encode) * 1000
 
         start_send_redis = time.perf_counter()
-        if do_redis == True:
-            await encodeimageto_redis_json(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID, r)
+        if do_redis == True or return_for_locust == True:
+            await gevent.get_hub().threadpool.apply(encodeimageto_redis_json, args=(batchlist, encoded_whole_batch, json_response_all, encoded, generated_predictID, r,return_for_locust))
 
         timefromstart_send_redis = (time.perf_counter() - start_send_redis) * 1000
-        logger.info(("time for redis ", timefromstart_send_redis))
+        #logger.info(("time for redis ", timefromstart_send_redis))
 
         ml_inference_log.append((time.perf_counter() - start_wholerun) * 1000)
 
-        if do_redis == True:
+        if do_redis == True or return_for_locust == True:
             handleling_value_ms = f"{ml_inference_log[0][0]: .2f}"
             process_to_tensor_value_ms = f"{ml_inference_log[1]: .2f}"
             inference_value_ms = f"{ml_inference_log[2]: .2f}"
@@ -543,24 +583,25 @@ async def prediction_processing(generated_predictID, do_redis, r, onnx_sess, cli
         objects_found.clear()
         toprocess.clear()
         json_response_all.clear()
-        print("internal lists, cleared ml_log ", len(ml_inference_log), " objects_found ", len(objects_found),
+        '''print("internal lists, cleared ml_log ", len(ml_inference_log), " objects_found ", len(objects_found),
               " toprocess ",
-              len(toprocess), " all responses for final JSON ", len(json_response_all))
+              len(toprocess), " all responses for final JSON ", len(json_response_all))'''
 
         #finaali json sendable on valmis kaikkien löydetyiden kuvien datalla,
         #jokaisen redis predict_id batchlistiin appended listasta on tehty redis set tallennus joten json responce_all lista tallennetaan redisiin.
         #Sendable json data haetaan @router.get("/predict/{predict_id}") requestissa saadulla predict_id:llä
 
 
-        logger.info("trying redis main block for sendable")
-
         try:
+            if return_for_locust != False:
+                return sendable
             if do_redis == True:
-                logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
-                json_metaset = r.set(f"json_meta:{generated_predictID}:json", sendable, ex=exparation_time_redis)
-                logger.info(("setting json meta for ", generated_predictID, "json"))
-                logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
-                logger.info(("redis and prediction_processing finished!", do_redis))
+                #logger.info("trying redis main block for sendable")
+                #logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
+                json_metaset = await r.set(f"json_meta:{generated_predictID}:json", sendable, ex=exparation_time_redis)
+                #logger.info(("setting json meta for ", generated_predictID, "json"))
+                #logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
+                #logger.info(("redis and prediction_processing finished!", do_redis))
             else:
                 logger.info(("redis.set(json_meta) skipped, was False", do_redis))
 
@@ -583,7 +624,7 @@ def test():
 
 @task_manager.task(retries=2, delay=0.3)
 @router.post("/predict")
-async def get_prediction(req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks), r = Depends(get_redis_connection), onnx_sess = Depends(get_onnx_sess), client = Depends(get_client_connection), do_redis: bool = Form(default=True), fake_redis_for_tests: bool = Form(default=False)): # generated_predictID: str = Form(default=[])
+async def get_prediction(req: Request, file: list[UploadFile] = File(default=[]), url: list[str] = Form(default=[]), generated_predictID: str = Form(default=[]), tasks = Depends(task_manager.get_tasks), r = Depends(get_redis_connection), onnx_sess = Depends(get_onnx_sess), client = Depends(get_client_connection), do_redis: bool = Form(default=True), fake_redis_for_tests: bool = Form(default=False), return_for_locust = False): # generated_predictID: str = Form(default=[])
 
     print("")
     print("uuid? " ,generated_predictID)
@@ -597,7 +638,7 @@ async def get_prediction(req: Request, file: list[UploadFile] = File(default=[])
 
     print("type of id ", type(generated_predictID))
     print("task_manager store??", task_manager.store)
-    task_id_by_manager = tasks.add_task(prediction_processing, generated_predictID, do_redis, r, onnx_sess, client, req, file, url)
+    task_id_by_manager = tasks.add_task(prediction_processing, generated_predictID, do_redis, return_for_locust, r, onnx_sess, client, req, file, url)
     #task_id_by_manager = tasks.add_task(test)
     print("task_manager ??", task_manager)
     print("task_id_by_manager", task_id_by_manager)

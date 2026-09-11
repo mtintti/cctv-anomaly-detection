@@ -1,3 +1,4 @@
+import psycopg
 
 from backend.app.config import logger
 
@@ -64,7 +65,8 @@ async def insert_user_in_db(pool, username: str, email: str, password: int):
                     return user_id
 
 
-            except Exception:
+            except psycopg.Error as e:
+
                 logger.error("error inserting user", exc_info=True)
 
 async def inserting_pg_training(pool, constructued_training_data,user_email: str):
@@ -151,3 +153,29 @@ async def get_postgres_training_recents(pool, session_user_email):
 
             except Exception:
                 logger.error("error getting recent training_datas find user by email", exc_info=True)
+
+
+async def inserting_locust_comparison_metrics(pool, insertable):
+    async with pool.connection() as aconn:
+        async with aconn.cursor() as curr:
+            try:
+                #hello
+                successful_inserts = 0
+                print("hello from db's side")
+                await curr.execute(
+                    """INSERT INTO metrics_locust_added_model_data (job_number_id, jobs_predict_id, classname_id, confidence_score, image_file_handling, 
+                    preprocess_to_tensor, inference, bbox_and_segmask, original_img_encode, batchlist_creation, 
+                    encode_images, redis, whole_runs_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+                    ON CONFLICT (job_number_id) DO UPDATE SET job_number_id=EXCLUDED.job_number_id, jobs_predict_id=EXCLUDED.jobs_predict_id,
+                     classname_id = EXCLUDED.classname_id, confidence_score= EXCLUDED.confidence_score, image_file_handling=EXCLUDED.image_file_handling,
+                     preprocess_to_tensor=EXCLUDED.preprocess_to_tensor, inference=EXCLUDED.inference, bbox_and_segmask=EXCLUDED.bbox_and_segmask, original_img_encode=EXCLUDED.original_img_encode,
+                    batchlist_creation=EXCLUDED.batchlist_creation, encode_images=EXCLUDED.encode_images, redis=EXCLUDED.redis, whole_runs_time=EXCLUDED.whole_runs_time, created_at=DEFAULT""",
+                    (insertable['job_id'], insertable['jobs_predict_id'], insertable['class_id'], insertable['confidence_score'],
+                     insertable['image_file_handling'], insertable['preprocess_to_tensor'], insertable['inference'],
+                     insertable['bbox_and_segmask'], insertable['original_img_encode'], insertable['batchlist_creation'],
+                     insertable['encode_images'], insertable['redis'], insertable['whole_runs_time']))
+                successful_inserts += 1
+                print("successful_inserts", successful_inserts)
+                return {'inserted_amount':successful_inserts}
+            except Exception:
+                logger.error("error inserting_locust_comparison_metrics by job", exc_info=True)

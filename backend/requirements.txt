@@ -28,3 +28,4 @@ docker~=7.2.0
 pywin32==312; sys_platform == "win32"
 testcontainers~=4.15.0
 wrapt~=2.3.0
+locust~=2.46.4
