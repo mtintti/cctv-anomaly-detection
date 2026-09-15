@@ -11,7 +11,7 @@ interface SidebarNavItem {
 
 const NAV_ITEMS: SidebarNavItem[] = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Datasets", href: "/dashboard/Datasets", icon: ImageIcon },
+  { label: "Datasets", href: "/dashboard/datasets", icon: ImageIcon },
   { label: "Models", href: "/dashboard/models", icon: Boxes },
   { label: "Annotations", href: "/dashboard/annotations", icon: ListChecks },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },

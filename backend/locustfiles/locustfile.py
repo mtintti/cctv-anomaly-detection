@@ -19,19 +19,27 @@ import fakeredis
 import requests
 
 from backend.ml.api.predict import prediction_processing
-from backend.testmockonnx import MockupOnnxInferenceSession
 
-import psycopg
-import psycopg_pool
 from locust import task,events, between, HttpUser
 from locust.runners import MasterRunner
-from testcontainers.community.postgres import PostgresContainer
+import locust.stats
 
 from backend.app.config import logger, loggercrier
 from backend.app.main import app
 
 sim_url = "https://weathercam.digitraffic.fi/C1255902.jpg" #"https://weathercam.digitraffic.fi/C1255909.jpg"
 sim_file = "https://weathercam.digitraffic.fi/C1255902.jpg" #"https://weathercam.digitraffic.fi/C1255909.jpg"
+
+SAM_FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "sam_fixture_two_bboxes.json")
+
+
+def sim_sam_body_based_on_real_req():
+    if getattr(app.state, "sim_sam_body", None) is None:
+        logger.info(f"loading simulated sam fixture from {SAM_FIXTURE_PATH}")
+        with open(SAM_FIXTURE_PATH, "r", encoding="utf-8") as f:
+            app.state.sim_sam_body = json.load(f)
+        logger.info("sim sam fixture loaded")
+    return app.state.sim_sam_body
 
 # a standalone psycopg connection for datatables initalization
 # for load testing using Locust as this happens just once per run
@@ -45,7 +53,7 @@ def using_database_TestContainer(environment, **kwargs):
         print("Started test from Master node")
     logger.info(("enviroiment passed ", environment.stats))
 
-
+    locust.stats.CSV_STATS_INTERVAL_SEC = 10
     fakeserver = fakeredis.FakeServer()
     fr = fakeredis.FakeStrictRedis(server=fakeserver)
     app.state.r_redis = fr
@@ -108,14 +116,6 @@ def _(environment, **kw):
     else:
         environment.process_exit_code = 0
 
-@events.quitting.add_listener
-def cleanup_testcontainer(environment, **kwargs):
-    sim_locust_pool_to_close = app.state.pool
-    sim_locust_pool_to_close.close()
-    container = app.state.TestContainer
-    container.stop()
-    loggercrier.info("stopped container and sim_locust_pool")
-
 
 class users_db_interactions(HttpUser):
     wait_time = between(1,5)
@@ -129,11 +129,12 @@ class users_db_interactions(HttpUser):
         self.sim_username = str(self.sim_username_predecode, 'utf-8')
         logger.info(("sim user to use,", self.sim_username))
         self.client.headers.update({"locust-testContainer-db-loadtest": "true"})
+        self.client.headers.update({"session_email": "sim_fixture_user@g.cm"})
         logger.info(("locust-db-loadtest is true?",self.client.headers.get("locust-testContainer-db-loadtest")))
 
     @task(2)
     def creating_sim_user(self):
-        logger.info("creating sim username")
+        #logger.info("creating sim username")
         try:
             self.client.post("/auth/signup", json={'username':f"{self.sim_username}",'email': f"{self.sim_username}@g.cm", 'password': '111111'})
         except Exception:
@@ -142,11 +143,21 @@ class users_db_interactions(HttpUser):
     @task(3)
     def sim_user_signin(self):
         try:
-            logger.info("login in sim username")
+           # logger.info("login in sim username")
             response = self.client.post("/auth/signin", json={'username':f"{self.sim_username}",'email': f"{self.sim_username}@g.cm", 'password': '111111'})
 
         except Exception:
             logger.error("error login in sim user at API call", exc_info=True)
+
+    @task(1)
+    def dashboard(self):
+        logger.info("mimicking dasboard access using preset user dashboard")
+        try:
+            logger.info(("using fixture user", self.client.headers.get("session_email")))
+            response = self.client.get("/auth/get_postgres_training_recents")
+            logger.info(f" /auth/get_postgres_training_recents status: {response.status_code}, {response.error}")
+        except Exception:
+            logger.error("error accessing sim user Dashboard at API call", exc_info=True)
 
     # koska oikea api endpoint /predict returnaa vain task_id ja prediction_id
     # process_prediction() olevan omassa functiossa, emme käytä oikeaa endponttia.
@@ -214,10 +225,7 @@ def processing_metrics_for_real_db(usable_json, client, number_of_calls):
     jobs_metric_encode_img_tag = jobs_metrics_all['encode_img_tag']
     jobs_metric_redis = jobs_metrics_all['redis'] #base amount for one prediction is 1.7 seconds. if more than 1 prediction are found in run, then 1.7 * N
     jobs_metric_whole_runs_time = jobs_metrics_all['whole_runs_time']
-    print("job id, classnumber and confidence_score")
-    print(type(number_of_calls), type(jobs_predict_id), type(jobs_class_id), type(jobs_confidence_score))
-    print("metrics")
-    print(type(jobs_metric_image_file_handling), type(jobs_metric_preprocess_to_tensor), type(jobs_metric_inference), type(jobs_metric_bbox_and_segmask), type(jobs_metric_original_img_encode), type(jobs_metric_batchlist), type(jobs_metric_encode_img_tag), type(jobs_metric_redis), type(jobs_metric_whole_runs_time))
+
     logger.info(("locust-db-loadtest is false?", client.headers.get("locust-testContainer-db-loadtest")))
     doing_pg_insert_metrics_per_job_using_testContainer = client.headers.get("locust-testContainer-db-loadtest")
     if doing_pg_insert_metrics_per_job_using_testContainer == 'false' and 0 <= number_of_calls <= 100:
@@ -239,7 +247,7 @@ def processing_metrics_for_real_db(usable_json, client, number_of_calls):
             logger.info(e)
             loggercrier.error("error in Locust to postgres schema", exc_info=True)
     else:
-        logger.info("too many inserts. 100 limit reached")
+        logger.info("real db was tried to use or too many inserts. 100 limit reached")
 
 class prediction(HttpUser):
     wait_time = between(1, 3)
@@ -247,20 +255,23 @@ class prediction(HttpUser):
     #aiheuttavata corutine ongelmia luokkan kanssa/sisällä locustissa.
     #prediction_processing runs metrics laitetaan oikeaan postgres db:hen koska käytetään niitä referenssinä predict ml metriikkaan.
     #lisätään confusion matriisin (TP,TN,FP,FN),sekä muut kuten Recall ja Precision sekä P99 P95 /predict api latency arvot db:hen niiden saatua
-
     number_of_calls = 0
+
+    def on_start(self):
+        self.sim_predict_id = "011e9239-e6af-4c44-83ee-ed697a4bc048"
+
     @task(1)
     def processing_prediction(self):
         try:
             #self.client.headers.update({"locust-predict-metrics": "true"})
-            self.client.headers.update({"locust-testContainer-db-loadtest": "false"})
+            self.client.headers.update({"locust-testContainer-db-loadtest": "true"})
 
             startofprocessing_predictloop = time.time()
             response_length = 0
             expection_happened = None
             response_process_thread = gevent.get_hub().threadpool.apply(running_processing_in_own_thread)
-            print("response from locust processing")
-            print("")
+            #print("response from locust processing")
+            #print("")
             #print("type", type(response_process_thread))
             decoded_json_data = str(response_process_thread,'utf-8')
             #print("type", type(decoded_json_data))
@@ -284,3 +295,14 @@ class prediction(HttpUser):
                 response_length=response_length,
                 exception=expection_happened,
             )
+
+    @task(1)
+    def sam_prediction_of_user_defined_bboxes(self):
+        try:
+            response = self.client.post( f"/predict/{self.sim_predict_id}/sam",
+                json=sim_sam_body_based_on_real_req(),)
+            logger.info(f"sam prediction status: {response.status_code}, {response.error}")
+            response_jsonsam = response.json()
+            #logger.info(("sam res by sim", response_jsonsam))
+        except Exception:
+            logger.error("Locust sending_sam_prediction error, ", exc_info=True)

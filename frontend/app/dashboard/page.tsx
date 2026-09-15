@@ -10,12 +10,6 @@ export default async function Dashboard(){
 
 
     return(
-        <div className="pt-5 pb-8 z-0">
-            <ImageContainer stations={stationdata.features} session={session}/>
-            {!session?.user ? <p>Not logged in</p>
-            :
-            <Db_UserContents session={session}/>
-            }
-        </div>
+        <Db_UserContents session={session}/>
     );
 };
