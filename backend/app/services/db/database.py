@@ -107,10 +107,10 @@ async def inserting_pg_training(pool, constructued_training_data,user_email: str
                                 print("type of annotations", type(annotations))
 
                                 print(annotations)
-                                await curr.execute(
+                                '''await curr.execute(
                                     """INSERT INTO training_data_annotations (user_id, image_name, training_img, annotations) VALUES (%s, %s, %s, %s) ON CONFLICT (user_id, image_name) DO UPDATE SET annotations = training_data_annotations.annotations || EXCLUDED.annotations, updated_at=DEFAULT""",
                                     (user_id, image_name, training_img, annotations))
-                                successful_inserts += len(annotations)
+                                successful_inserts += len(annotations)'''
                                 print("successful_inserts", successful_inserts)
                                 image_name = None
                                 training_img = None
@@ -153,6 +153,63 @@ async def get_postgres_training_recents(pool, session_user_email):
 
             except Exception:
                 logger.error("error getting recent training_datas find user by email", exc_info=True)
+
+
+async def getting_proxy_metrics_for_groundtruth(pool, image_name):
+    logger.info("in db getting_proxy_metrics_for_groundtruth")
+    logger.info(pool.connection())
+    async with pool.connection() as aconn:
+        async with aconn.cursor() as curr:
+            try:
+                listofall_found_annotations_per_camera = []
+                camera_index_pruned = image_name.find("/", 30)
+                print("camera_index_pruned is", camera_index_pruned)
+                camera_index_dot_removed = image_name.find(".", camera_index_pruned)
+                print("camera_index_dot_removed is", camera_index_dot_removed)
+                camera_searchable_name = image_name[camera_index_pruned + 1:camera_index_dot_removed]
+                camera_searchable_name = camera_searchable_name[0:6]
+                print("camera_searchable_name is", camera_searchable_name)
+                try:
+                    await curr.execute("SELECT name,near,municipality,latitude,longitude FROM cameras WHERE id = %s",
+                                       (camera_searchable_name,))
+                    first_cam_row_found = await curr.fetchone()
+                    print("first_cam_row_found is", first_cam_row_found)
+                    lat = first_cam_row_found[3]
+                    lon = first_cam_row_found[4]
+                    try:
+                        await curr.execute(
+                            """SELECT camera_id, camera_name, municipality, latitude, longitude, distance_km FROM find_cameras_within_distance(%s, %s, %s)""",
+                            (lat, lon, 50))
+
+                        nearby_cameras = await curr.fetchall()
+                        logger.info(("nearby cameras per image", len(nearby_cameras)))
+
+                        for camera in nearby_cameras:
+                            # print(camera)
+                            camera_url_name_to_match = f"%{camera[0]}%"
+                            # löydetään kaikki camera id:t
+                            # kunhan ne sisältävät kameran id numberon jossain kohtaa textissä
+                            await curr.execute(
+                                "SELECT id, updated_at, annotations FROM training_data_annotations WHERE image_name LIKE %s",
+                                (camera_url_name_to_match,))
+                            all_found_annotations_per_camera = await curr.fetchall()
+                            if len(all_found_annotations_per_camera) > 0:
+                                logger.info("found a matching camera id")
+                                print(len(all_found_annotations_per_camera))
+                                print(all_found_annotations_per_camera)
+                                listofall_found_annotations_per_camera.append(all_found_annotations_per_camera)
+                        logger.info("results of all found annotations for image")
+                        print(len(listofall_found_annotations_per_camera))
+                        print(listofall_found_annotations_per_camera)
+                        return listofall_found_annotations_per_camera
+
+                    except Exception:
+                        logger.info("Found imagename but errored in latlon calculation")
+                except Exception:
+                    logger.info("tried to get image names lat and lon coordinates")
+            except Exception:
+                logger.error("error at start of getting proxy_metrics from db", exc_info=True)
+
 
 
 async def inserting_locust_comparison_metrics(pool, insertable):

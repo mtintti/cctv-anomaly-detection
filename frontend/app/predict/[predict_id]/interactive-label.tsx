@@ -12,12 +12,13 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
     const [hidbbox, sethidbbox] = useState(false)
     const [hidseg, sethidseg] = useState(false)
     const [dragging_bbox, setdragging_bbox] = useState(false)
+    const [using_predict_data, setusing_predict_data] = useState(false)
     const [vis_color_classname, set_vis_color_classname] = useState(false);
     const [color_classname, set_color_classname] = useState<number[] | null>(null);
     const [classname_for_rect, setClassname_for_rect] = useState<number[] | null>(null);
     const [color_of_picker_window, set_color_of_picker_window] = useState(null)
     const [amount_of_BoundingBoxes, set_amount_of_BoundingBoxes] = useState(0);
-    let [current_selection_of_rects, setcurrent_selection_of_rects] = useState([]);
+    let [current_selection_of_rects, setcurrent_selection_of_rects] = useState([0]);
     const [sam_predictions_to_send_length, setSam_predictions_to_send_length] = useState(0);
     const [loading_button, setLoading_button] = useState(false)
     const [loading_button_sam, setLoading_button_sam] = useState(false)
@@ -53,6 +54,7 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
               setSam_predictions_to_send_length(0)
               for(let i = 0; i <updatedRects.length;i++){
                   if(updatedRects[i].linked_with_sam_id == true){
+                      console.log("sam_predictions_to_send_length is ", sam_predictions_to_send_length)
                       setSam_predictions_to_send_length(sam_predictions_to_send_length => sam_predictions_to_send_length+1)
                   }
               }
@@ -92,7 +94,59 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
 
     const visibility_bbox = () => {
         sethidbbox((prev) => !prev);
+        //console.log("hidbbox is", hidbbox)
     };
+     const usable_predict_data = () => {
+        /*setusing_predict_data((prev) => !prev);
+        if(using_predict_data == true){
+            console.log("true")
+            if(sam_data != null){
+                 setSam_predictions_to_send_length(predictionCardData.length + sam_data.length);
+                 console.log("sam_data.length is ", sam_data.length)
+                 console.log("predictionCardData.length ", predictionCardData.length)
+             } else {
+                 setSam_predictions_to_send_length(predictionCardData.length)
+             }
+        } else if (using_predict_data == false){
+            console.log("false")
+            console.log("sam_predictions_to_send_length is ", sam_predictions_to_send_length)
+            if(predictionCardData.length > 0 && sam_data != null){
+                console.log("predictionCardData.length ", predictionCardData.length)
+                console.log("sam data ", sam_data.length)
+                let difference_of = sam_data.length - predictionCardData.length;
+                console.log("difference_of amount ", difference_of)
+                setSam_predictions_to_send_length(sam_data.length);
+            } else {
+                setSam_predictions_to_send_length(0);
+            }
+        }*/
+    setusing_predict_data(prev => {
+        const newValue = !prev;
+
+        console.log("using_predict_data changing:", prev, "→", newValue);
+
+        if (newValue === true) {
+            if (sam_data != null) {
+                setSam_predictions_to_send_length(
+                    predictionCardData.length + sam_data.length
+                );
+            } else {
+                setSam_predictions_to_send_length(
+                    predictionCardData.length
+                );
+            }
+        } else {
+            if (predictionCardData.length > 0 && sam_data != null) {
+                setSam_predictions_to_send_length(sam_data.length);
+            } else {
+                setSam_predictions_to_send_length(0);
+            }
+        }
+
+        return newValue;
+    });
+};
+
 
     const visibility_seg = () => {
         sethidseg((prev) => !prev);
@@ -114,36 +168,117 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
         let constructing_training_data = [];
         let last_img_in_stack = null;
 
-        for(let i = 0; i < sam_data.length; i++){
-            console.log("sam index", sam_data[i])
-            console.log("rects id ", current_selection_of_rects[0][i].id)
-            console.log("sam_data id ", sam_data[i]. belongs_to_rect)
-            let matched_by_id = current_selection_of_rects[0].find(rect => rect.id === sam_data[i].belongs_to_rect)
-            console.log("matched_by_id is ", matched_by_id)
+        if(sam_data != null){
+            for(let i = 0; i < sam_data.length; i++){
+                console.log("sam index", sam_data[i])
+                console.log("rects id ", current_selection_of_rects[0][i].id)
+                console.log("sam_data id ", sam_data[i]. belongs_to_rect)
+                let matched_by_id = current_selection_of_rects[0].find(rect => rect.id === sam_data[i].belongs_to_rect)
+                console.log("matched_by_id is ", matched_by_id)
 
-            if(matched_by_id.linked_with_sam_id === true){
-                if(matched_by_id.belongs_to_img != last_img_in_stack){
-                    last_img_in_stack = matched_by_id.belongs_to_img
-                    let nextAddition = [
-                    ...constructing_training_data.slice(0, i),
-                    {image_name : sam_data[i].image_name},
-                    {training_img : sam_data[i].sam_items[0].finished_training_img},
-                    {annonations : [sam_data[i].annotations]},
-                    ...constructing_training_data.slice(i)
-                ];
-                constructing_training_data.length = 0;
-                constructing_training_data.push(nextAddition)
+                if(matched_by_id.linked_with_sam_id === true){
+                    if(matched_by_id.belongs_to_img != last_img_in_stack){
+                        last_img_in_stack = matched_by_id.belongs_to_img
+                        let nextAddition = [
+                        ...constructing_training_data.slice(0, i),
+                        {image_name : sam_data[i].image_name},
+                        {training_img : sam_data[i].sam_items[0].finished_training_img},
+                        {annonations : [sam_data[i].annotations]},
+                        ...constructing_training_data.slice(i)
+                    ];
+                    constructing_training_data.length = 0;
+                    constructing_training_data.push(nextAddition)
 
-                console.log("nextAddition is pushed", nextAddition)
+                    console.log("nextAddition is pushed", nextAddition)
+                    } else {
+                        console.log("annonations adding entry??")
+                        console.log(constructing_training_data[0])
+                        console.log(constructing_training_data[0][2])
+                        constructing_training_data[0][2].annonations.push(sam_data[i].annotations)
+                        console.log("nextAddition is pushed?", constructing_training_data[0][2].annonations.length)
+                    }
+                }
+                console.log("using_predict_data set as ", using_predict_data)
+                if(using_predict_data === true){
+                    for(let p = 0; p < predictionCardData.length; p++){
+                        if(predictionCardData[p].jsonresponse[0].belongsto === sam_data[i].image_name){
+                            let already_pushed_or_not = constructing_training_data[0][2].annonations.find(ann =>  ann === predictionCardData[p].annotations.stringbuffer_val)
+                            console.log("already_pushed_or_not", typeof(already_pushed_or_not))
+
+                            console.log("predictionCardData index", p)
+                            console.log("predictionCardData data to push", predictionCardData[p].annotations.stringbuffer_val)
+                            console.log(constructing_training_data[0])
+                            console.log(constructing_training_data[0][2])
+                            if(predictionCardData[p].annotations.stringbuffer_val != undefined && typeof(already_pushed_or_not) != 'string'){
+                                constructing_training_data[0][2].annonations.push(predictionCardData[p].annotations.stringbuffer_val)
+                                console.log("nextAddition is pushed?", constructing_training_data[0][2].annonations.length)
+                            }
+                        }
+                    }
+                }
+            }
+
+        } else {
+            //user wants to skip creating new bounding boxes and instead loop over the predictionCardDatas contents.
+            for (let p = 0; p < predictionCardData.length; p++) {
+
+                const image_name = predictionCardData[p].jsonresponse[0].belongsto;
+                const training_img = predictionCardData[p].jsonresponse[0].original_img;
+                const annotation =predictionCardData[p].annotations.stringbuffer_val;
+
+                console.log("predictionCardData index:", p);
+                console.log("image_name:", image_name);
+                console.log("training_img:", training_img);
+                console.log("annotation:", annotation);
+
+                if (
+                    image_name == null ||
+                    training_img == null ||
+                    annotation == null
+                ) {
+                    console.log(
+                        "Skipping prediction - missing required data"
+                    );
+                    continue;
+                }
+
+                // Find whether this image already exists
+                const existingImage = constructing_training_data.find(
+                    entry => entry[0].image_name === image_name
+                );
+
+                if (existingImage) {
+                    // Existing image -> add annotation
+                    existingImage[2].annonations.push(annotation);
+
+                    console.log(
+                        "Added prediction annotation to existing image:",
+                        image_name
+                    );
+
+                    console.log(
+                        "annotation count:",
+                        existingImage[2].annonations.length
+                    );
                 } else {
-                    console.log("annonations adding entry??")
-                    console.log(constructing_training_data[0])
-                    console.log(constructing_training_data[0][2])
-                    constructing_training_data[0][2].annonations.push(sam_data[i].annotations)
-                    console.log("nextAddition is pushed?", constructing_training_data[0][2].annonations.length)
+                    // New image -> create new training entry
+                    const nextAddition = [
+                        { image_name: image_name },
+                        { training_img: training_img },
+                        { annonations: [annotation] }
+                    ];
+
+                    constructing_training_data.push(nextAddition);
+
+                    console.log(
+                        "Created prediction training entry:",
+                        nextAddition
+                    );
                 }
             }
         }
+
+
         console.log("finished, ready to send sam_predictions")
         console.log(constructing_training_data)
 
@@ -177,10 +312,12 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
         console.log(current_selection_of_rects)
         let sam_body_constructing = []
         let no_classcolor_found = 0;
-        sam_body_constructing.push(current_selection_of_rects[0]);
-        console.log("current_selection_of_rects contains post", current_selection_of_rects)
-        console.log("sam_body_constructing contains ", sam_body_constructing)
-        //sam_body_constructing.push(current_selection_of_rects)
+        if(current_selection_of_rects[0].length > 0){
+            sam_body_constructing.push(current_selection_of_rects[0]);
+            console.log("current_selection_of_rects contains post", current_selection_of_rects)
+            console.log("sam_body_constructing contains ", sam_body_constructing)
+            //sam_body_constructing.push(current_selection_of_rects)
+        }
 
         for(let i = 0; i < sam_body_constructing[0].length; i++){
             console.log("sam_body_constructing indx", sam_body_constructing[0][i])
@@ -279,21 +416,24 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                             if(predictionCardData[clicked_index].jsonresponse[0].belongsto === sam_prediction.image_name){
 
                             let foundRect = undefined;
-                            const rect = current_selection_of_rects.find(rect => rect[i].id)
-                            if(rect != undefined && rect[i].id === sam_prediction.belongs_to_rect){
+                            if(current_selection_of_rects.length >= 1 && current_selection_of_rects[0][i] != undefined){
+                                //console.log("current_selection_of_rects length", current_selection_of_rects.length)
+                                //console.log("i is ", i)
+                                //console.log("current_selection_of_rects i is ", current_selection_of_rects[i])
+                                //console.log("current_selection_of_rects i id", current_selection_of_rects[0][i].id)
+                                const rect = current_selection_of_rects.find(rect => rect[i].id)
+                                if(rect[i].id === sam_prediction.belongs_to_rect){
 
-                                //console.log(sam_data)
-                                //console.log("sam_prediction", sam_prediction)
+                                    foundRect = rect[i];
+                                    return(
+                                        <div key={i}>
+                                            <img className={`absolute w-full h-full ${foundRect.linked_with_sam_id ? 'saturate-150' : 'opacity-60'}`} src={sam_prediction.sam_items[0].finished_segmask} />
+                                        </div>
+                                    )
 
-                                foundRect = rect[i];
-                                //console.log("foundRect", foundRect)
-                                //console.log("foundRect linked_with_sam_id?? ", foundRect.linked_with_sam_id)
+                                }
                             }
-                            return(
-                                <div key={i}>
-                                    <img className={`absolute w-full h-full ${foundRect.linked_with_sam_id ? 'saturate-150' : 'opacity-60'}`} src={sam_prediction.sam_items[0].finished_segmask} />
-                                </div>
-                            )
+
                             }
                         }
                         ))}
@@ -304,11 +444,14 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                 <div className="items-center flex">
                     <div className="flex relative mt-2 mb-2 left-8 w-50 md:min-w-80 md:max-w-90 rounded-full bg-slate-200 shadow-md shadow-slate-400 gap-2">
                         <div className="justify-start w-full flex gap-2">
-                            <div className="pt-1 ml-2 md:pt-2 px-1 rounded-md ease-in-out hover:bg-slate-300/30" onClick={visibility_bbox}>
+                            <div className="pt-1 ml-2 md:pt-2 px-1 rounded-md ease-in-out cursor-pointer hover:bg-slate-300/30" onClick={visibility_bbox}>
                                 <img width="40" src="/boundingbox.png"/>
                             </div>
-                            <div className="pt-2 lg:pt-3 px-1 rounded-md ease-in-out hover:bg-slate-300/30" onClick={visibility_seg}>
+                            <div className="pt-2 lg:pt-3 px-1 rounded-md ease-in-out cursor-pointer hover:bg-slate-300/30" onClick={visibility_seg}>
                                <img width="40" src="/segmenticon2.png"/>
+                            </div>
+                            <div className="pt-2 w-[40px] lg:pt-3 px-1 rounded-md ease-in-out cursor-pointer hover:bg-slate-300/30" onClick={usable_predict_data}>
+                               <p>use preds</p>
                             </div>
                         </div>
                         <div className="justify-end w-full flex gap-2">
@@ -349,7 +492,7 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                                   <button className="cursor-pointer" onClick={() => {setLoading_button_sam(true); setTimeout(() => { sending_rects(); }, 0);}}>send</button>
                                   : <button className="animate-spin">..</button> }
                          </div>
-                         {sam_predictions_to_send_length != 0 && (
+                         {sam_predictions_to_send_length != 0 | amount_of_BoundingBoxes.length != sam_predictions_to_send_length && (
                              <>
                              <div className="flex">
                                  <p className="">predictions:</p>

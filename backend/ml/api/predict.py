@@ -23,7 +23,8 @@ from backend.app.dependecies import get_redis_connection, get_onnx_sess, get_cli
 
 from backend.ml.api.letterboxing import letterbox, ImgSize
 from backend.ml.api.onnxtoimg import onnx_to_img
-from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID, Metrics
+from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID, Metrics, \
+    Annotations
 import redis
 from backend.ml.api.testdatafalse import TEST_PREDICTIONS
 
@@ -102,7 +103,7 @@ async def image_process(bytes_from_img, ml_inference_log):
         loggercrier.error("error in image_proccess, /predict: ", exc_info=True)
 
 # Onnx model inference, gotten api image has been changed to tensor input format, letterboxed to 512x512 w x h. Def preforms inference on onnx model, NMS pruning and passes the data to further composition.
-async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess, return_for_locust):
+async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess, return_for_locust, belongto_name):
     global classname_id
 
     input = sess.get_inputs()[0].name
@@ -142,7 +143,7 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
     coeffincies_segmasks = out0arr[:,6:]
     segmasks_prototypes = output1
 
-    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust)
+    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust,belongto_name)
     ml_inference_log.append((time.perf_counter() - start_decodeimg) * 1000)
     return final_composed_images, original_image_to_use
 
@@ -175,7 +176,8 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                                                details=[details],
                                                prediction=[predictions])
                 metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None, original_img_encode=None, batchlist=None, encode_img_tag=None, redis=None, whole_runs_time=None)
-                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics])
+                annotations = Annotations(class_id=class_id, stringbuffer_val=final_composed_images[z].annotations)
+                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics], annotations=annotations)
                 batchlist.append(((bbox), (segmask), constructed))
 
             else:
@@ -187,7 +189,8 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                                            prediction=[predictions])
                 metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None,
                                   original_img_encode=None, batchlist=None, encode_img_tag=None, redis=None ,whole_runs_time=None)
-                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
+                annotations =  Annotations(class_id=None, stringbuffer_val=None)
+                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics], annotations=annotations)  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
                 #json_response_all.append(constructed)
                 #print("constructed none path, ", constructed)
                 batchlist.append(constructed)
@@ -288,7 +291,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
                             results_setted = await pipe.execute()
-                            #logger.info(("results_setted ", results_setted))
+                            logger.info(("results_setted ", results_setted))
                         elif type(separated_invidual) == tuple:
                             #logger.info("separated_invidual is tuple")
                             #print("encoded_whole_batch all")
@@ -308,8 +311,6 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                                 results_setted = await pipe.execute()
                                 logger.info(("results_setted ", results_setted))
 
-
-
                     except redis.exceptions.ResponseError:
                         loggercrier.error(("error setting data "))
 
@@ -327,7 +328,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
                 imgset = await r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
-                #logger.info(imgset)
+                logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
 
@@ -344,7 +345,6 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                 gevent.sleep(1.7)
                 logger.info(("b is", b))
                 logger.info("waited for one")
-
 
 
     except Exception:
@@ -530,7 +530,7 @@ async def prediction_processing(generated_predictID, do_redis, return_for_locust
             pad = reswith_width_height[5]
 
             final_composed_images, original_image_to_use = await get_predictions(res, original_image,
-                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess, return_for_locust)
+                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess, return_for_locust, belongto_name)
 
             start_originalencode = time.perf_counter()
             '''if return_for_locust == False:

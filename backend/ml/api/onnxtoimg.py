@@ -1,13 +1,20 @@
 import asyncio
 
+import cv2
 import gevent
+import httpx
 import numpy as np
 import torch
+from torch import tensor
 import ultralytics.utils.ops
 from PIL import Image
 from PIL.ImageDraw import ImageDraw
+from starlette.requests import Request
 
+from backend.app.api.db_routes import proxy_metrics_from_url_image
 from backend.app.config import logger
+from backend.app.dependecies import get_client_connection
+from backend.ml.api.sam import create_mask_yxz_labels
 from backend.ml.schema.final_imgs import FinalImagesObject
 from backend.ml.schema.predict_obj import FoundOnnxObject
 
@@ -66,7 +73,8 @@ def color_and_draw_segmentation_bbox(cropped, all_colors, coords, original_rgba,
     for i in range(len(cropped)):
         cropped_invi = np.array(cropped[i])
         invidual_color = all_colors[i]
-        cropped_invi_bw = (cropped_invi > 0.37).astype("uint8") * 255  # making it black and white
+        cropped_invi = (cropped_invi > 0.37).astype("uint8")
+        cropped_invi_bw = cropped_invi * 255  # making it black and white
 
         # laitetaan segmentaatio maski overlayksi jotta se näkyy bounding boxin sisällä,
         # vaihdetaan valkoinen väri === 255, segmentaatio maskin omaksi väriksi (invidual_color).
@@ -98,20 +106,22 @@ def color_and_draw_segmentation_bbox(cropped, all_colors, coords, original_rgba,
             #print("moved past combining both overlays")
         else:
             logger.error("in onnx_to_img length of overlay_seg or overlay_bbox is rgb instead of rgba")
-        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended, original_rgba=original_rgba)
+        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended, original_rgba=original_rgba, segment_mask=cropped_invi, annotations=None)
         final_composed_images.append(addable)
         #return overlay_segmentmask_image, overlay_bbox_image, blended
 
     return final_composed_images
 
 
-def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image, final_composed_images):
+async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image, final_composed_images,belongto_name):
 
     coords = []
     all_colors = []
     #muutetaan alkuperäinen kuva RGBA kuvaksi, koska tarvitsemme kaikkia chanelleitä myöhemmin segmentaatio overlay kuvaan
 
-
+    all_class_labels = []
+    all_class_scores = []
+    all_segmasks = []
     for z in range(len(objects_found)):
         #print("in range objects_found ", objects_found[z])
         x_cord = objects_found[z].x
@@ -128,11 +138,26 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
         coords.append(coordinates)
         rgb_color = colors[classname_id]
         all_colors.append(rgb_color)
+        all_class_labels.append(classname_id)
+        all_class_scores.append(objects_found[z].confidence_score)
 
     #print("coeffs ", finalised_coeffs.shape, " prototypes ", segmasks_prototypes.shape)
 
     #print("moving to reshape_combined ")
     #print(" ")
+
+    # käytetään lähellä olevia tallennettuja predictioneita tekemään confusion matriisi käyttämällä niitä referenssinä olevista luokkanumeroista
+    # tarvitaan feikki request objecti hakemaan httpx.AsyncClient connection app.state:sta
+    try:
+        client = httpx.AsyncClient(base_url="http://localhost:8000/")
+        list_of_matching_near_cams = await client.post(
+            url=f"auth/proxy_metrics_from_url_image?image_name={belongto_name}")
+        print("received from db")
+        listres = list_of_matching_near_cams.json()
+        print(listres)
+    except Exception:
+        logger.warning("Expection on getting proxy metrics", exc_info=True)
+
     final_mask_probs = reshape_combine_coeffprototype(segmasks_prototypes=segmasks_prototypes, coeffs=finalised_coeffs,
                                                       tensor_width=512, tensor_height=512,
                                                       original_img_w=original_img_w, original_img_h=original_img_h,
@@ -143,21 +168,60 @@ def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coe
 
     bbox_coords_as_tensor = torch.as_tensor(coords)
     bbox_coords_as_tensor= bbox_coords_as_tensor.reshape(len(coords), 4)
-    #print("shape of bbox coords ", bbox_coords_as_tensor.shape)
+    print("shape of bbox coords ", bbox_coords_as_tensor.shape)
 
-    #print("finalmaskprops ", final_mask_probs.shape)
+    print("finalmaskprops ", final_mask_probs.shape)
     cropped = ultralytics.utils.ops.crop_mask(final_mask_probs, bbox_coords_as_tensor)
-    #print("cropped ", cropped.shape)
+    print("cropped ", cropped.shape)
+    print("type of", type(cropped))
+    print(cropped[0][0][:10])
     #loopataan kaikki cropatut maskit, filteröidään mask 10% tarkkuudella musta valkoiseksi,
     # jotta vain segmentaatiot coordinaatissa on näkyvissä
     all_colors = np.array(all_colors)
-    #print("colors of classess ", all_colors.shape)
+    print("colors of classess ", all_colors.shape)
+
     #seg_overlay, bbox_overlay, blended_together = color_and_draw_segmentation_bbox(cropped=cropped, all_colors=all_colors,coords=coords)
     final_composed_images = color_and_draw_segmentation_bbox(cropped=cropped, all_colors=all_colors, coords=coords, original_rgba=original_image, final_composed_images=final_composed_images)
+    for i in final_composed_images:
+        print(i.segment_mask[:20])
+        #yxn_version_of_mask = mask_to_normalized_polygon(i.segment_mask)
+        all_segmasks.append(i.segment_mask)
+
+    annotation_buffers = {}
+
+    for i in range(len(all_segmasks)):
+        returned_buffer = create_mask_yxz_labels(
+            mask_Data=all_segmasks[i],
+            classname=all_class_labels[i],
+            img_basename=belongto_name,
+            annotation_buffers=annotation_buffers,
+        )
+        #print("returned buffer val", returned_buffer.getvalue())
+        print("type of ", type(returned_buffer))
+        print("length of final annotations pre ", final_composed_images[i].annotations)
+        final_composed_images[i].annotations=returned_buffer.getvalue()
+        print("length of final annotations post ", len(final_composed_images[i].annotations))
+        annotation_buffers.clear()
+
+
+    print("length of all segment masks", len(all_segmasks))
+    print(all_segmasks)
+    tensored_all_segmentmasks = torch.as_tensor(all_segmasks)
+    print("tensor shape is", tensored_all_segmentmasks.shape)
+    preds = [dict(
+        masks=tensored_all_segmentmasks,
+        labels=tensor(all_class_labels),
+        scores=tensor(all_class_scores),
+    )]
+    print("preds keys are ",preds[0].keys())
+    print("preds key types are ", preds[0].values())
+    for p in preds[0]:
+        print("p ", p)
+        print("preds ",preds[0][p].shape)
     return final_composed_images
 
 
-async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust):
+async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust, belongto_name):
 
     indx = 0
     conf_to_pass = 0.10
@@ -202,7 +266,7 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
         '''if return_for_locust != True:
             final_composed_images = await asyncio.to_thread(arrange_full_segmentation_mask, objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
         else:'''
-        final_composed_images = gevent.get_hub().threadpool.apply(arrange_full_segmentation_mask, args=(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images,))
+        final_composed_images = await gevent.get_hub().threadpool.apply(arrange_full_segmentation_mask, args=(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images, belongto_name))
         #print(" ")
 
         #return overlay_seg, overlay_bbox, blended_together, original_image_RGBA
@@ -212,6 +276,6 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
         print("No predictions found!! ", len(passedboxs) , len(passedcoeffs))
         original_image_none = original_image.convert('RGBA')
         addable_nonFound = FinalImagesObject(index=len(objects_found)+1, overlay_seg=None, overlay_bbox=None,
-                                    blended_together=None, original_rgba=original_image_none)
+                                    blended_together=None, original_rgba=original_image_none, segment_mask=None, annotations=None)
         final_composed_images.append(addable_nonFound)
         return final_composed_images, original_image_none
