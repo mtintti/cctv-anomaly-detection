@@ -31,6 +31,7 @@ class Metrics(BaseModel):
 
 class Annotations(BaseModel):
     class_id: int | None
+    training_img: str | None
     stringbuffer_val: str | None
 
 class PredictID(BaseModel):

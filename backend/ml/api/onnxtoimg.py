@@ -47,7 +47,12 @@ def reshape_combine_coeffprototype(segmasks_prototypes, coeffs, tensor_width, te
     rescaled_mask = rescaled_mask.squeeze(0) #removing the batch as our shape would be ( 1,N,W, H) otherwise
     #print(" shape of rescaled_mask ", rescaled_mask.shape)
 
-    return rescaled_mask
+    #muutetaan yhdistetty segmentti maski koosta 128, 128 -> 512,512 jotta sekin matchaa treeni kuvan kanssa
+    training_image = ultralytics.utils.ops.scale_masks(masks_sigmoid[None].float(), (tensor_height, tensor_width))
+    training_image = training_image.squeeze(0)  # removing the batch as our shape would be ( 1,N,W, H) otherwise
+    #print(" shape of training_image ", training_image.shape)
+
+    return rescaled_mask, training_image
 
 
 def scale_coordinates_tensor_to_img(x_cord, y_cord, bboxw, bboxh, scale, pad):
@@ -67,14 +72,18 @@ def scale_coordinates_tensor_to_img(x_cord, y_cord, bboxw, bboxh, scale, pad):
     return p1tuple, p2tuple
 
 
-def color_and_draw_segmentation_bbox(cropped, all_colors, coords, original_rgba, final_composed_images):
+def color_and_draw_segmentation_bbox(cropped, non_reshaped_training_mask,all_colors, coords, original_coords,original_rgba, final_composed_images):
     # was here final_composed_images = []
     #print("cropped length in color_and_draw_segmentation_bbox ", len(cropped))
     for i in range(len(cropped)):
         cropped_invi = np.array(cropped[i])
+        training_img_cropped_invi = np.array(non_reshaped_training_mask[i])
         invidual_color = all_colors[i]
         cropped_invi = (cropped_invi > 0.37).astype("uint8")
+        training_img_filtered = (training_img_cropped_invi > 0.37).astype("uint8")
+
         cropped_invi_bw = cropped_invi * 255  # making it black and white
+        training_img_cropped_invidual_mask = training_img_filtered * 255 #same for model training segment masks
 
         # laitetaan segmentaatio maski overlayksi jotta se näkyy bounding boxin sisällä,
         # vaihdetaan valkoinen väri === 255, segmentaatio maskin omaksi väriksi (invidual_color).
@@ -106,7 +115,7 @@ def color_and_draw_segmentation_bbox(cropped, all_colors, coords, original_rgba,
             #print("moved past combining both overlays")
         else:
             logger.error("in onnx_to_img length of overlay_seg or overlay_bbox is rgb instead of rgba")
-        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended, original_rgba=original_rgba, segment_mask=cropped_invi, annotations=None)
+        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended, original_rgba=original_rgba, segment_mask=training_img_cropped_invidual_mask, annotations=None)
         final_composed_images.append(addable)
         #return overlay_segmentmask_image, overlay_bbox_image, blended
 
@@ -118,10 +127,11 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
     coords = []
     all_colors = []
     #muutetaan alkuperäinen kuva RGBA kuvaksi, koska tarvitsemme kaikkia chanelleitä myöhemmin segmentaatio overlay kuvaan
-
+    original_coords = []
     all_class_labels = []
     all_class_scores = []
     all_segmasks = []
+    listof_proxy_camera_results = None
     for z in range(len(objects_found)):
         #print("in range objects_found ", objects_found[z])
         x_cord = objects_found[z].x
@@ -136,6 +146,12 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
         p1tuple, p2tuple = scale_coordinates_tensor_to_img(x_cord, y_cord, bboxw, bboxh, scale, pad)
         coordinates = p1tuple,p2tuple
         coords.append(coordinates)
+
+        original_p1tuple = (x_cord, y_cord)
+        original_p2tuple = (bboxw, bboxh)
+        orig_coordinates = original_p1tuple, original_p2tuple
+        original_coords.append(orig_coordinates)
+
         rgb_color = colors[classname_id]
         all_colors.append(rgb_color)
         all_class_labels.append(classname_id)
@@ -155,36 +171,40 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
         print("received from db")
         listres = list_of_matching_near_cams.json()
         print(listres)
+        print("type of ", type(listres))
+        if len(listres) > 0:
+            listof_proxy_camera_results=listres
+
     except Exception:
         logger.warning("Expection on getting proxy metrics", exc_info=True)
 
-    final_mask_probs = reshape_combine_coeffprototype(segmasks_prototypes=segmasks_prototypes, coeffs=finalised_coeffs,
+    final_mask_probs, non_reshaped_mask = reshape_combine_coeffprototype(segmasks_prototypes=segmasks_prototypes, coeffs=finalised_coeffs,
                                                       tensor_width=512, tensor_height=512,
                                                       original_img_w=original_img_w, original_img_h=original_img_h,
                                                       scale=scale, pad=pad)
 
     # bbox coordinaatit ovat yhdistetty yhteen tensoriin, tensorin shape on (N, 4)
     # yhdessä indexissä on yhden bounding box coordinaatit jota käytetään croppaamaan segmentaatio mask
-
     bbox_coords_as_tensor = torch.as_tensor(coords)
     bbox_coords_as_tensor= bbox_coords_as_tensor.reshape(len(coords), 4)
-    print("shape of bbox coords ", bbox_coords_as_tensor.shape)
 
-    print("finalmaskprops ", final_mask_probs.shape)
+    # koska annotation (classname, xyn coords) texti stringit tehdään onnx predictionistakin
+    # tarvitsemme alkuperäiset tensor koon koordinaatit maskien croppaamiseen
+    non_reshaped_bbox_coords_as_tensor = torch.as_tensor(original_coords)
+    non_reshaped_bbox_coords_as_tensor = non_reshaped_bbox_coords_as_tensor.reshape(len(original_coords), 4)
+
+    #print("finalmaskprops ", final_mask_probs.shape, " non reshaped masks", non_reshaped_mask.shape)
     cropped = ultralytics.utils.ops.crop_mask(final_mask_probs, bbox_coords_as_tensor)
-    print("cropped ", cropped.shape)
-    print("type of", type(cropped))
-    print(cropped[0][0][:10])
+    non_reshaped_training_mask = ultralytics.utils.ops.crop_mask(non_reshaped_mask, non_reshaped_bbox_coords_as_tensor)
+
     #loopataan kaikki cropatut maskit, filteröidään mask 10% tarkkuudella musta valkoiseksi,
     # jotta vain segmentaatiot coordinaatissa on näkyvissä
     all_colors = np.array(all_colors)
-    print("colors of classess ", all_colors.shape)
 
-    #seg_overlay, bbox_overlay, blended_together = color_and_draw_segmentation_bbox(cropped=cropped, all_colors=all_colors,coords=coords)
-    final_composed_images = color_and_draw_segmentation_bbox(cropped=cropped, all_colors=all_colors, coords=coords, original_rgba=original_image, final_composed_images=final_composed_images)
+    final_composed_images = color_and_draw_segmentation_bbox(cropped=cropped, non_reshaped_training_mask=non_reshaped_training_mask, all_colors=all_colors, coords=coords, original_coords=original_coords, original_rgba=original_image, final_composed_images=final_composed_images)
+    # loopataan training_imagen koon (512,512) segmentaatio maskit, hyödynnetään /prediction/api/sam tiedostossa,
+    # luodussa funktiossa tekemään mustasta taustasta, tensor segmentti maskista valkoiset kontrastista pixel coordinaatit
     for i in final_composed_images:
-        print(i.segment_mask[:20])
-        #yxn_version_of_mask = mask_to_normalized_polygon(i.segment_mask)
         all_segmasks.append(i.segment_mask)
 
     annotation_buffers = {}
@@ -196,28 +216,26 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
             img_basename=belongto_name,
             annotation_buffers=annotation_buffers,
         )
-        #print("returned buffer val", returned_buffer.getvalue())
-        print("type of ", type(returned_buffer))
-        print("length of final annotations pre ", final_composed_images[i].annotations)
+
         final_composed_images[i].annotations=returned_buffer.getvalue()
-        print("length of final annotations post ", len(final_composed_images[i].annotations))
         annotation_buffers.clear()
 
 
-    print("length of all segment masks", len(all_segmasks))
-    print(all_segmasks)
     tensored_all_segmentmasks = torch.as_tensor(all_segmasks)
-    print("tensor shape is", tensored_all_segmentmasks.shape)
-    preds = [dict(
+    # torchMetrics-kirjastoa hyödynnetään mAP-metriikkan tekemiseen kunhan nimeä vastaavan kuva lyötyy ja/tai
+    # 50 kilometrin aluella (lat, lon arvoja käyttäen /db/database.py:ssä) käyttäjän valitsemasta kamerasta löytyy tallennettuja ann textejä postgres databasessa
+    # proxy metriikalla saadan arvioitua onko onnx segmentaatio maskit miten oikeita vai vääriä käyttäen confusion matriisia
+    if listof_proxy_camera_results is not None:
+        preds = [dict(
         masks=tensored_all_segmentmasks,
         labels=tensor(all_class_labels),
         scores=tensor(all_class_scores),
-    )]
-    print("preds keys are ",preds[0].keys())
-    print("preds key types are ", preds[0].values())
-    for p in preds[0]:
-        print("p ", p)
-        print("preds ",preds[0][p].shape)
+        )]
+        print("preds keys are ",preds[0].keys())
+        for p in preds[0]:
+            print("p ", p)
+            print("preds ",preds[0][p].shape)
+
     return final_composed_images
 
 

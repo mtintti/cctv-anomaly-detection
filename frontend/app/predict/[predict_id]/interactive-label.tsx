@@ -203,12 +203,7 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
                     for(let p = 0; p < predictionCardData.length; p++){
                         if(predictionCardData[p].jsonresponse[0].belongsto === sam_data[i].image_name){
                             let already_pushed_or_not = constructing_training_data[0][2].annonations.find(ann =>  ann === predictionCardData[p].annotations.stringbuffer_val)
-                            console.log("already_pushed_or_not", typeof(already_pushed_or_not))
 
-                            console.log("predictionCardData index", p)
-                            console.log("predictionCardData data to push", predictionCardData[p].annotations.stringbuffer_val)
-                            console.log(constructing_training_data[0])
-                            console.log(constructing_training_data[0][2])
                             if(predictionCardData[p].annotations.stringbuffer_val != undefined && typeof(already_pushed_or_not) != 'string'){
                                 constructing_training_data[0][2].annonations.push(predictionCardData[p].annotations.stringbuffer_val)
                                 console.log("nextAddition is pushed?", constructing_training_data[0][2].annonations.length)
@@ -223,12 +218,12 @@ export default function InteractiveLabeling({setopen_interactiveLabel, predictio
             for (let p = 0; p < predictionCardData.length; p++) {
 
                 const image_name = predictionCardData[p].jsonresponse[0].belongsto;
-                const training_img = predictionCardData[p].jsonresponse[0].original_img;
+                const training_img = predictionCardData[p].annotations.training_img;
                 const annotation =predictionCardData[p].annotations.stringbuffer_val;
 
                 console.log("predictionCardData index:", p);
                 console.log("image_name:", image_name);
-                console.log("training_img:", training_img);
+                console.log("training_img:", typeof(training_img));
                 console.log("annotation:", annotation);
 
                 if (

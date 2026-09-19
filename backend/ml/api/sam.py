@@ -109,7 +109,6 @@ def create_mask_yxz_labels(mask_Data, img_basename, classname, annotation_buffer
                 )
 
             buffer.write(" ")
-
         return buffer
 
     finally:
