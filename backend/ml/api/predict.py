@@ -366,7 +366,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
 
 
     except Exception:
-        loggercrier("encoding image failed! ", exc_info=True)
+        loggercrier.error("encoding image failed! ", exc_info=True)
 
 
 @router.get("/tasks")

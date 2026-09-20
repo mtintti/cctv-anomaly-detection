@@ -155,6 +155,77 @@ async def get_postgres_training_recents(pool, session_user_email):
                 logger.error("error getting recent training_datas find user by email", exc_info=True)
 
 
+async def inserting_users_set_dataset_content(sendable,pool, session_user_email, dataset_name):
+    async with pool.connection() as aconn:
+        async with aconn.cursor() as curr:
+            try:
+                await curr.execute("SELECT id FROM users WHERE email = %s", (session_user_email,))
+                user_row = await curr.fetchone()
+                if user_row is None:
+                    print("user not found, get_postgres_training_recents")
+                    logger.info(("training recent get rejected, unknown user email ", session_user_email))
+                    return None
+                else:
+                    user_id = user_row[0]
+                    print("user_row all", user_row)
+
+                    try:
+                        print("getting dataset_name if exists", dataset_name," for ",user_id)
+                        await curr.execute("SELECT user_id,name FROM datasets WHERE name = %s AND user_id = %s", (dataset_name,user_id,))
+
+                        user_dataset_exists = await curr.fetchone()
+                        print("user_dataset_exists??", user_dataset_exists)
+                        if user_dataset_exists is None:
+                            print("user_dataset_exists not found, inserting dataset")
+                            try:
+                                print("user found in db, inserting training data for ", user_id)
+                                pic_id = None
+                                image_name = None
+                                training_img = None
+                                annotations = None
+                                successful_inserts = 0
+                                contains_images = []
+                                print("type of sendable", type(sendable))
+                                print("length of sendable", len(sendable))
+                                for i in sendable:
+                                    print("type of i", type(i))
+                                    # print(i)
+                                    if i.get('id'):
+                                        pic_id = i.get('id')
+                                        print("id to insert", pic_id)
+                                        contains_images.append(pic_id)
+                                    if i.get('image_name'):
+                                        image_name = i.get('image_name')
+                                    if i.get('training_img'):
+                                        training_img = i.get('training_img')
+                                    if i.get('annotations'):
+                                        annotations = i.get('annotations')
+
+                                if pic_id is not None and image_name is not None and training_img is not None and annotations is not None:
+                                    print("data to insert", len(contains_images), image_name, " ",
+                                          len(training_img), " ", len(annotations))
+                                    print("type of annotations", type(annotations))
+
+                                    await curr.execute(
+                                        """INSERT INTO datasets (user_id, contains_images, name) VALUES (%s, %s, %s) ON CONFLICT (name) DO UPDATE SET contains_images = datasets.contains_images || EXCLUDED.contains_images, updated_at=DEFAULT""",
+                                        (user_id, contains_images, dataset_name))
+                                    successful_inserts += len(contains_images)
+                                    print("successful_inserts", successful_inserts)
+
+                                return {'inserted_amount': successful_inserts}
+
+                            except Exception:
+                                logger.error("error inserting datasets contents in db", exc_info=True)
+
+                        else:
+                            logger.info(("user_dataset_exists in db for user, returning.. ", dataset_name, user_id))
+                            return {'dataset_naming_error': 'dataset already exists'}
+                    except Exception:
+                        logger.error("error in searching datasets for user", exc_info=True)
+
+            except Exception:
+                logger.error("error getting recent training_datas find user by email", exc_info=True)
+
 async def getting_proxy_metrics_for_groundtruth(pool, image_name):
     logger.info("in db getting_proxy_metrics_for_groundtruth")
     logger.info(pool.connection())

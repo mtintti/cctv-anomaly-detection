@@ -48,8 +48,6 @@ export default function Db_UserContents({session}){
     }
 
 
-console.log("open_clickedAnnImg_content is ", open_clickedAnnImg_content)
-
     return(
       <div className="flex h-full bg-white">
         {open_clickedAnnImg_content === true && (<div className="min-w-[360px] w-screen md:h-[600px] h-[1400px] absolute flex z-99 backdrop-blur-sm"><AnnImg_detailed setopen_clickedAnnImg_content={setopen_clickedAnnImg_content} specified_AnnImg_content={specified_AnnImg_content} setSpecified_AnnImg_content={setSpecified_AnnImg_content}/></div>) }
@@ -75,6 +73,7 @@ console.log("open_clickedAnnImg_content is ", open_clickedAnnImg_content)
                   updatedByLabel={updatedByLabel}
                   setopen_clickedAnnImg_content={setopen_clickedAnnImg_content}
                   setSpecified_AnnImg_content={setSpecified_AnnImg_content}
+                  session={session}
                 />
               </div>
 
