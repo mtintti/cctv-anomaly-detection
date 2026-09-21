@@ -29,8 +29,14 @@ class Metrics(BaseModel):
     redis: str | None
     whole_runs_time: str | None
 
+class Annotations(BaseModel):
+    class_id: int | None
+    training_img: str | None
+    stringbuffer_val: str | None
+
 class PredictID(BaseModel):
     predict_id: uuid.UUID
     jsonresponse: list[JsonResponse]
     metrics: list[Metrics]
+    annotations: Annotations
 

@@ -1,6 +1,7 @@
 import base64
 import uuid
 
+import cv2
 import numpy as np
 import torch
 import ultralytics
@@ -14,7 +15,6 @@ from ultralytics.models.sam import Predictor as sam
 from backend.app.config import logger
 from backend.ml.schema.sam_schema import samResponse, samItems, SamRequest, MetricsSam
 from backend.ml.api.letterboxing import letterbox, ImgSize
-from backend.ml.api.predict import encode_image_in_batch
 
 sam_router = APIRouter()
 
@@ -59,23 +59,60 @@ def create_mask_yxz_labels(mask_Data, img_basename, classname, annotation_buffer
 
     try:
 
-        normalized_coords = mask_Data.xyn
-        if normalized_coords is None or all(len(p) == 0 for p in normalized_coords):
-            return
+        buffer = annotation_buffers.setdefault(
+            img_basename,
+            StringIO()
+        )
 
-        buffer = annotation_buffers.setdefault(img_basename, StringIO())
+        # Ultralytics Masks
+        if hasattr(mask_Data, "xyn"):
+            normalized_coords = mask_Data.xyn
 
-        for mask in normalized_coords:
-            buffer.write("\n")
-            buffer.write(str(classname))
+            if normalized_coords is None:
+                return buffer
+
+            for mask in normalized_coords:
+                buffer.write(f"\n{classname} ")
+
+                for coord in np.nditer(mask):
+                    buffer.write(f"{float(coord)} ")
+
+        # The Raw boolean/pixel mask instead is used
+        else:
+            mask = mask_Data
+
+            if isinstance(mask, torch.Tensor):
+                mask = mask.detach().cpu().numpy()
+
+            mask = mask.astype(np.uint8)
+
+            contours, _ = cv2.findContours(
+                mask,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            if not contours:
+                return buffer
+
+            contour = max(contours, key=cv2.contourArea)
+
+            h, w = mask.shape
+
+            contour = contour.squeeze(1)
+
+            buffer.write(f"\n{classname}")
+
+            for x, y in contour:
+                buffer.write(
+                    f" {x / w:.6f} {y / h:.6f}"
+                )
+
             buffer.write(" ")
-            for coord in np.nditer(mask):
-                buffer.write(str(float(coord)))
-                buffer.write(" ")
+        return buffer
 
     finally:
         print("file done")
-        return buffer
 
 # käyttäjän näkemä segmentaatio maski alkuperäisen kuvan päällä, käytetään vain kuvakohtaiseen annonation.txt visuaalisointtin
 def color_coded_overlay_SAMsegmask(mask, colorcoded_class):
@@ -95,6 +132,7 @@ def color_coded_overlay_SAMsegmask(mask, colorcoded_class):
 @sam_router.post("/predict/{predict_id}/sam")
 async def samInference(predict_id: uuid.UUID, payload: SamRequest):
     try:
+        from backend.ml.api.predict import encode_image_in_batch
         overrides = dict(conf=0.25, task="segment", imgsz=512, mode="predict", model="sam_b.pt")
         predictor = sam(overrides=overrides)
 

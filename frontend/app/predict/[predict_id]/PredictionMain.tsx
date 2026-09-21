@@ -125,7 +125,6 @@ useEffect(() => {
 const predictionCardData: PredictionEntry[]  =
     Array.isArray(data) ? data : Fallback_ui;
 
-console.log("open_interactiveLabel?? ", open_interactiveLabel)
 
 return(
     <>

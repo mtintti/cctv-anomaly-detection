@@ -3,6 +3,7 @@ import uuid
 from time import sleep
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -103,16 +104,23 @@ class TestEncoding:
 
     def test_encode_image_returns_png_data_uri(self):
         image = Image.new("RGB", (20, 20), "red")
+        resized_training_img = np.full(
+            (20, 20, 3),
+            114,
+            dtype=np.uint8
+        )
 
-        result = encode_image(image)
+        resultTupleof_original_and_training_img = encode_image(image, resized_training_img, justto_bytes=True)
 
-        assert result.startswith(b"data:image/png;base64,")
+        assert resultTupleof_original_and_training_img[0].startswith(b"data:image/png;base64,")
 
-        encoded_part = result.split(b",", 1)[1]
+        encoded_part = resultTupleof_original_and_training_img[0].split(b",", 1)[1]
         decoded = base64.b64decode(encoded_part)
 
         assert decoded.startswith(b"\x89PNG")
+        training_png_bytes = resultTupleof_original_and_training_img[1]
 
+        assert training_png_bytes.startswith(b"\x89PNG")
     def test_encode_image_in_batch_handles_bbox_segmask_tuples(self):
         images = [
             (
@@ -159,6 +167,7 @@ class TestBatchlistEncode:
         overlay = SimpleNamespace(
             overlay_seg=Image.new("RGB", (20, 20), "white"),
             overlay_bbox=Image.new("RGB", (20, 20), "black"),
+            annotations='1 0.11 0.22 0.33'
         )
 
         detected_object = SimpleNamespace(
@@ -168,7 +177,8 @@ class TestBatchlistEncode:
         )
 
         batchlist = []
-        inference_log = []
+        ml_inference_log = []
+
 
         await batchlist_encode(
             "camera.jpg",
@@ -177,10 +187,11 @@ class TestBatchlistEncode:
             "camera.jpg",
             batchlist,
             "b'data:image/png;base64,",
-            uuid.uuid4(),
-            640,
-            480,
-            inference_log,
+            "b'bytes",
+            generated_predictID=uuid.uuid4(),
+            original_img_w=640,
+            original_img_h=480,
+            ml_inference_log=ml_inference_log,
         )
 
         assert len(batchlist) == 1
@@ -193,7 +204,7 @@ class TestBatchlistEncode:
         assert item[2].jsonresponse[0].details[0].class_id == 1
         assert item[2].jsonresponse[0].details[0].class_name == "pothole"
 
-        assert len(inference_log) == 1
+        assert len(ml_inference_log) == 1
 
     @pytest.mark.asyncio
     async def test_batchlist_encode_without_prediction(self):
@@ -203,7 +214,7 @@ class TestBatchlistEncode:
         )
 
         batchlist = []
-        inference_log = []
+        ml_inference_log = []
 
         predict_id = uuid.uuid4()
 
@@ -214,10 +225,11 @@ class TestBatchlistEncode:
             "camera.jpg",
             batchlist,
             "b'original-image",
-            predict_id,
-        1240,
-            780,
-            inference_log,
+            "b'usabable_for_training-image",
+            generated_predictID=predict_id,
+        original_img_w=1240,
+            original_img_h=780,
+            ml_inference_log=ml_inference_log,
         )
 
         assert len(batchlist) == 1

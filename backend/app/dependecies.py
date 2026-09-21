@@ -2,8 +2,8 @@ import httpx
 import onnxruntime
 import psycopg
 import psycopg_pool
-import redis
 from redis import asyncio
+from gevent import lock
 from starlette.requests import Request
 from testcontainers.community.postgres import PostgresContainer
 
@@ -25,7 +25,7 @@ def creating_sim_users_table(connection_info):
 
                 curr.execute(
                     """ CREATE TABLE users (
-                    id SERIAL NOT NULL,
+                    id SERIAL PRIMARY KEY NOT NULL,
                     username VARCHAR(30),
                     email VARCHAR(40) UNIQUE,
                     password VARCHAR
@@ -47,6 +47,56 @@ def creating_sim_users_table(connection_info):
                 logger.error("error creating sim user db table", exc_info=True)
 
 
+def creating_sim_training_data_table(connection_info):
+    with psycopg.connect(connection_info) as aconn:
+        with aconn.cursor() as curr:
+            try:
+                logger.info("creating sim database table training_data..")
+
+                curr.execute(
+                    """ CREATE TABLE training_data_annotations (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(id),
+                    image_name TEXT,
+                    training_img TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    annotations TEXT[]
+                    )""")
+
+                logger.info("inserting one sim fixture user + training_data row..")
+
+                curr.execute(
+                    """ INSERT INTO users (username, email, password)
+                    VALUES (%s, %s, %s)
+                    RETURNING id""",
+                    ("sim_fixture_user", "sim_fixture_user@g.cm", "111111"))
+                sim_fixture_user_id = curr.fetchone()[0]
+                print("FIXTURE user", sim_fixture_user_id)
+
+                curr.execute(
+                    """ INSERT INTO training_data_annotations (user_id, image_name, training_img, annotations)
+                    VALUES (%s, %s, %s, %s)""",
+                    (
+                        sim_fixture_user_id,
+                        "https://weathercam.digitraffic.fi/C1255902.jpg",
+                        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                        ['{"classname": 4, "left": 10, "top": 10, "width": 50, "height": 50}'],
+                    ))
+
+                aconn.commit()
+                logger.info("sim db training_data table + fixture row created!")
+
+            except psycopg.Error as e:
+                if e.diag:
+                    print(f"SQLSTATE Code: {e.diag.sqlstate}")
+                    print(f"Primary Message: {e.diag.message_primary}")
+                    print(f"Severity: {e.diag.severity}")
+                    print(f"Table Name: {e.diag.table_name}")
+                    print(f"Constraint Name: {e.diag.constraint_name}")
+                    print(f"Column Name: {e.diag.column_name}")
+                logger.error("error creating sim training_data table / fixture row", exc_info=True)
+
 
 async def shared_client(app):
     global client_digitraffic
@@ -65,7 +115,7 @@ async def shared_client(app):
 
     connection_info = (
     f"dbname={settings.db_name} "f"user={settings.db_user} "f"password={settings.db_pass} "f"host={settings.db_host} "f"port={settings.db_port}")
-    pool = psycopg_pool.AsyncConnectionPool(connection_info, open=False)
+    pool = psycopg_pool.AsyncConnectionPool(connection_info, max_size=20, open=False)
 
     sess = onnxruntime.InferenceSession('backend/ml/best.onnx')
 
@@ -74,7 +124,7 @@ async def shared_client(app):
     app.state.r_redis = r
     app.state.sess_onnx = sess
     app.state.pool = pool
-    app.state.have_used_test_container_before = False
+    app.state.have_used_test_container_before = lock.Semaphore(0)
 
     print("\n stats: ")
     print(app.state.pool.get_stats())
@@ -120,18 +170,20 @@ async def get_pool(request:Request):
     logger.info(should_use_sim_locust_db_pool)
     if should_use_sim_locust_db_pool:
 
-        if request.app.state.have_used_test_container_before == False:
-            logger.info(("have_used_test_containerbefore ", request.app.state.have_used_test_container_before))
+        if request.app.state.have_used_test_container_before.counter == 0:
+            request.app.state.have_used_test_container_before = lock.Semaphore(1)
+            logger.info(("locking ", request.app.state.have_used_test_container_before.counter))
             container = PostgresContainer("postgres:16-alpine")
             container.start()
             connection_info = (
                 f"dbname={container.dbname} "f"user={container.username} "f"password={container.password} "f"host={container.get_container_host_ip()} "f"port={container.get_exposed_port(5432)}")
 
             creating_sim_users_table(connection_info)
-            logger.info("creating_sim_users_table finished in init")
+            creating_sim_training_data_table(connection_info)
+            logger.info("creating_sim users and training_data_table finished in init")
 
             # käytetään ConnectionPoolia simuloituun Locust trafficiin.
-            sim_locust_pool = psycopg_pool.AsyncConnectionPool(connection_info, open=False)
+            sim_locust_pool = psycopg_pool.AsyncConnectionPool(connection_info, max_size=20, open=False)
 
             await sim_locust_pool.open()
             await sim_locust_pool.wait()
@@ -140,10 +192,12 @@ async def get_pool(request:Request):
             request.app.state.pool = sim_locust_pool
             request.app.state.TestContainer = container
             logger.info(("sim_locust_pool connection ", sim_locust_pool.connection))
-            request.app.state.have_used_test_container_before = True
+            #request.app.state.container_locked = lock.Semaphore(0)
+            logger.info(("locking after ", request.app.state.have_used_test_container_before.counter))
+
             return sim_locust_pool
         else:
-            logger.info(("have_used_test_containerbefore ", request.app.state.have_used_test_container_before))
+            logger.info(("have_used_test_container_before is locked?", request.app.state.have_used_test_container_before.counter))
             sim_locust_pool = request.app.state.pool
             logger.info(("sim_locust_pool connection, already turned on ", sim_locust_pool.connection))
             return sim_locust_pool
@@ -155,18 +209,21 @@ async def get_pool(request:Request):
 
 async def shared_client_close(app) -> None:
     to_close = app.state.digi_traffic
-    to_close.aclose()
+    await to_close.aclose()
 
     to_close2 = app.state.client
-    to_close2.aclose()
+    await to_close2.aclose()
 
     to_close3 = await app.state.r_redis
-    to_close3.close()
+    await to_close3.close()
 
     to_close5 = app.state.pool
-    to_close5.close()
+    await to_close5.close()
+
 
     if app.state.TestContainer is not None:
+        app.state.have_used_test_container_before = lock.Semaphore(0)
+        logger.info(("unlocking done", app.state.have_used_test_container_before.counter))
         container = app.state.TestContainer
         container.stop()
         logger.info("stopped container and sim_locust_pool")

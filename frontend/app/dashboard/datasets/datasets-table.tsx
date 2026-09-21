@@ -2,30 +2,26 @@
 
 import { useMemo, useState, useEffect, type ReactNode } from "react";
 import { formatUpdatedAt} from "@/app/lib/formatUpdateAt.ts";
-import { Toast } from '@base-ui/react/toast';
+
 interface RecentlyAddedCardProps {
   users_near_real_time: int;
   isLoading: boolean;
   updatedByLabel: string;
 }
 
-export default function RecentlyAddedCard({
+export default function DatasetsTable({
   RecentUserContents,
   users_near_real_time,
   isLoading,
   updatedByLabel,
   setopen_clickedAnnImg_content,
   setSpecified_AnnImg_content,
-  session,
 }: RecentlyAddedCardProps) {
   const [query, setQuery] = useState("");
-  const [Datasetname,setDatasetname] = useState("")
   const [recent_data_selected_to_dataset, setRecent_data_selected_to_dataset] = useState([]);
   const [all_selected_checkbox, setAll_selected_checkbox] = useState(false);
   //const [perPaged_RecentContent, setperPaged_RecentContent] = useState([])
   const [looped_amount, setlooped_amount] = useState([])
-  const toastManager = Toast.useToastManager();
-
   const filtered_RecentUserContents = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return RecentUserContents;
@@ -33,7 +29,6 @@ export default function RecentlyAddedCard({
   }, [RecentUserContents, query]);
 
   const [clickedPage_Index, setClickedPage_Index] = useState(0);
-  const [namingDataset, setnamingDataset] = useState(false)
 
   const items_wanted_perPage = 3;
   const totalPages = Math.ceil(
@@ -71,27 +66,6 @@ export default function RecentlyAddedCard({
       }
   }
 
-async function send_to_dataset(recent_data_selected_to_dataset){
-      console.log("sending to datasets..")
-      console.log(recent_data_selected_to_dataset)
-      if(session != null){
-          const res = await fetch(`/api/auth/db_datasets`, {
-              method: "POST", headers:{'dataset_name': Datasetname}, body: JSON.stringify({'sendable':recent_data_selected_to_dataset})}
-          )
-          console.log("res from send to dataset", res)
-          let db_json = await res.json();
-          console.log("saved by training_id amount ", db_json)
-          if(db_json.inserted_amount != undefined){
-            toastManager.add({title: `${db_json.inserted_amount} saved successfully to dataset`, description: 'see them in your saved dataset folder'})
-          } else if (db_json.dataset_naming_error != undefined){
-            toastManager.add({title: `${db_json.dataset_naming_error}`,data: { error_message:'choose another name for your dataset instead or save these in the dataset directly', },} )
-          }
-
-      } else {
-          toastManager.add({title: 'Not logged in', description: 'Login to save these'})
-      }
-}
-
   function settingSelected_from_recently_added(clicked_item) {
   console.log("toggleOne index_number", clicked_item.id);
 
@@ -115,7 +89,8 @@ async function send_to_dataset(recent_data_selected_to_dataset){
 }
 
   return (
-    <section aria-label="Recently added" className="rounded-2xl bg-neutral-100 p-4">
+    <section aria-label="" className="rounded-2xl bg-neutral-100 p-4">
+    <p className="text-lg font-medium text-neutral-600 tracking-tight">Datasets for model training</p>
       <div className="flex flex-wrap items-center gap-4 pl-2">
         <label className="flex items-center gap-2 text-sm font-medium text-neutral-700">
           <input
@@ -124,27 +99,15 @@ async function send_to_dataset(recent_data_selected_to_dataset){
             checked={all_selected_checkbox === true}
             aria-label="Select all recently added files"
           />
-        </label>
-        <span className="text-sm text-neutral-500">Selected files {recent_data_selected_to_dataset.length}</span>
-        {recent_data_selected_to_dataset.length >= 1 && (<div><div className="gap-4 rounded-full h-full bg-blue-100/50 hover:bg-blue-100/80 text-neutral-800 px-4 cursor-pointer" onClick={(()=> setnamingDataset(true))}><p>to new dataset</p></div>
-        {namingDataset === true && (<div className="min-w-[60px] absolute flex-rows z-99 rounded-md bg-gray-200 "><div className="flex place-self-end top-1 pr-2 cursor-pointer" onClick={(()=> setnamingDataset(false))}>x</div>
-        <input type="search"
-          value={Datasetname}
-          onChange={(e) => setDatasetname(e.target.value)}
-          placeholder={`Helsinki-${users_time.toISOString().substring(0, 10)}`}
-          className="ml-auto min-w-[220px] rounded-full border border-neutral-300 bg-white px-4 py-1.5 mb-2 text-sm outline-none focus:border-neutral-500"/>
-          <div className="flex flex-cols place-self-end bottom-1 text-neutral-700">
-          <p className="left-10 pr-2 pb-2 cursor-pointer hover:underline decoration-amber-100 decoration-2 hover:decorator-solid" onClick={(()=> setDatasetname(`Helsinki-${users_time.toISOString().substring(0, 10)}`))}>use example</p>
-          <p className="right-4 bottom-1 pr-2 pb-2 cursor-pointer hover:underline decoration-amber-500 decoration-2 hover:decorator-solid" onClick={(()=> send_to_dataset(recent_data_selected_to_dataset))}>save</p></div>
-          </div>)}
-        </div>)}
 
+        </label>
+        <span className="text-sm text-neutral-500">Selected {recent_data_selected_to_dataset.size}</span>
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search available images"
-          className="ml-auto min-w-[220px] rounded-full border border-neutral-300 bg-white px-4 py-1.5 mb-2 text-sm outline-none focus:border-neutral-500"
+          className="ml-auto min-w-[220px] rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm outline-none focus:border-neutral-500"
         />
       </div>
       {recent_data_selected_to_dataset.length != 0 && <div className="pl-4 flex">{recent_data_selected_to_dataset.map((invidual =>
@@ -164,7 +127,7 @@ async function send_to_dataset(recent_data_selected_to_dataset){
           <thead>
             <tr className="border-b border-neutral-200 text-neutral-500">
               <th className="w-8 py-2 font-normal" />
-              <th className="py-2 font-normal">File Name</th>
+              <th className="py-2 font-normal">Datasets Name</th>
               <th className="py-2 font-normal">File Size</th>
               <th className="py-2 font-normal">Last Changed</th>
               <th className="py-2 font-normal">Updated by</th>
@@ -181,7 +144,7 @@ async function send_to_dataset(recent_data_selected_to_dataset){
             {!isLoading && RecentUserContents.length === 0 && (
               <RowMessage colSpan={6}>
                 {RecentUserContents.length === 0
-                  ? "No files yet — predictions you run will show up here."
+                  ? "No Datasets yet — as long as you have saved and grouped images will show up here."
                   : "No files match your search."}
               </RowMessage>
             )}

@@ -1,3 +1,4 @@
+import json
 
 from fastapi import APIRouter, Request
 from fastapi.params import Depends
@@ -9,7 +10,8 @@ from backend.app.schemas.locust_metrics_real_db import Locust_to_postgres
 from backend.app.schemas.login import Login
 from backend.app.schemas.signin import Signup
 from backend.app.services.db.database import get_user_in_db, insert_user_in_db, inserting_pg_training, \
-    get_postgres_training_recents, inserting_locust_comparison_metrics
+    get_postgres_training_recents, inserting_locust_comparison_metrics, getting_proxy_metrics_for_groundtruth, \
+    inserting_users_set_dataset_content
 
 router = APIRouter(tags=["db"], responses={404: {"description": "not found :<"}})
 
@@ -90,4 +92,20 @@ async def inserting_locust_metrics_for_pred_comparison(request:Request,sendable:
         return await inserting_locust_comparison_metrics(pool, insertable.model_dump(mode="json"))
     else:
         return {'inserts are too large. stopping': job_id_locust_insert}
+@router.post("/auth/send_to_user_dataset")
+async def sending_content_to_user_dataset(request:Request, pool=Depends(get_pool)):
+    print("sending_content_to_user_dataset")
+    sendable = await request.json()
+    #sendable = json.load(sendable_pre_parsing)
+    print("sendable")
+    print("type of sendable", type(sendable))
+    #print(sendable['sendable'])
+    email = request.headers.get('session_email')
+    dataset_name = request.headers.get('dataset_name')
+    return await inserting_users_set_dataset_content(sendable['sendable'], pool, session_user_email=email, dataset_name=dataset_name)
 
+@router.post("/auth/proxy_metrics_from_url_image")
+async def proxy_metrics_from_url_image(image_name: str,pool=Depends(get_pool)):
+    logger.info(("pool in proxy route is ", pool))
+    logger.info(("image_name in proxy route is ", image_name))
+    return await getting_proxy_metrics_for_groundtruth(pool, image_name)

@@ -23,7 +23,8 @@ from backend.app.dependecies import get_redis_connection, get_onnx_sess, get_cli
 
 from backend.ml.api.letterboxing import letterbox, ImgSize
 from backend.ml.api.onnxtoimg import onnx_to_img
-from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID, Metrics
+from backend.ml.schema.json_response import JsonResponse, Inviprediction, Predictiondetails, PredictID, Metrics, \
+    Annotations
 import redis
 from backend.ml.api.testdatafalse import TEST_PREDICTIONS
 
@@ -97,12 +98,12 @@ async def image_process(bytes_from_img, ml_inference_log):
         changed = np.expand_dims(changed, axis=0)
 
         ml_inference_log.append((time.perf_counter() - start) * 1000)
-        return changed, test_image, original_img_w, original_img_h, scale, pad
+        return changed, resized_img,test_image, original_img_w, original_img_h, scale, pad
     except Exception:
         loggercrier.error("error in image_proccess, /predict: ", exc_info=True)
 
 # Onnx model inference, gotten api image has been changed to tensor input format, letterboxed to 512x512 w x h. Def preforms inference on onnx model, NMS pruning and passes the data to further composition.
-async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess, return_for_locust):
+async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess, return_for_locust, belongto_name):
     global classname_id
 
     input = sess.get_inputs()[0].name
@@ -142,14 +143,14 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
     coeffincies_segmasks = out0arr[:,6:]
     segmasks_prototypes = output1
 
-    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust)
+    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust,belongto_name)
     ml_inference_log.append((time.perf_counter() - start_decodeimg) * 1000)
     return final_composed_images, original_image_to_use
 
 
 #batclist_encodessa laitetaan löytöjen jsonmeta data (confidence_score, class_id ja belongsto..) tiedot. Itse kuvat laitetaan tuple:een (bbox, segment, json_response)
 #batchlist_encode luodaan lista jota käytetään encode_image_in_batch function kuvan muuttamisessta PIL-> b' muotoon valmiiksi tehdystä json_response listasta jonka batchlist_encode lähettää
-async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, generated_predictID, original_img_w: int, original_img_h: int, ml_inference_log):
+async def batchlist_encode(belongto_name: str, objects_found: list, final_composed_images: list, item, batchlist, encoded_original_img, training_image,generated_predictID, original_img_w: int, original_img_h: int, ml_inference_log):
 
         #logger.info(("length of final_composed_images ", len(final_composed_images)))
         start_batchlist = time.perf_counter()
@@ -175,7 +176,8 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                                                details=[details],
                                                prediction=[predictions])
                 metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None, original_img_encode=None, batchlist=None, encode_img_tag=None, redis=None, whole_runs_time=None)
-                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics])
+                annotations = Annotations(class_id=class_id, stringbuffer_val=final_composed_images[z].annotations, training_img=str(training_image))
+                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics], annotations=annotations)
                 batchlist.append(((bbox), (segmask), constructed))
 
             else:
@@ -187,7 +189,8 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                                            prediction=[predictions])
                 metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None,
                                   original_img_encode=None, batchlist=None, encode_img_tag=None, redis=None ,whole_runs_time=None)
-                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics])  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
+                annotations =  Annotations(class_id=None, stringbuffer_val=None, training_img=None)
+                constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics], annotations=annotations)  # {'imageBbox':bboxBytes}, {imageSeg:segmaskBytes}
                 #json_response_all.append(constructed)
                 #print("constructed none path, ", constructed)
                 batchlist.append(constructed)
@@ -197,16 +200,34 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
         ml_inference_log.append(timefromstart_batchlist)
 
 # kuvat voivat suoraan näyttää <img> tagissä kun ne on muutettu data:imgage/png base64 muotoon bufferin kautta
-def encode_image(image_tochange):
+def encode_image(image_tochange, resized_training_img, justto_bytes=None):
 
-        #PIL.Image.Image muutetaan png byteksi
-        buffer_touse = BytesIO()
-        #print("imgage_tochange type ", type(image_tochange))
-        image_tochange.save(buffer_touse, format="PNG")
-        changedto_Bytes = buffer_touse.getvalue()
-        encoded_orig = base64.b64encode(changedto_Bytes)
-        final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded_orig
-        return final_bytes_to_encoded_png# was this, using encoded ones, changedto_Bytes
+        if justto_bytes is None:
+            print("justtobytes for training image", justto_bytes)
+            #PIL.Image.Image muutetaan png byteksi
+            buffer_touse = BytesIO()
+            #print("imgage_tochange type ", type(image_tochange))
+            image_tochange.save(buffer_touse, format="PNG")
+            changedto_Bytes = buffer_touse.getvalue()
+            encoded_orig = base64.b64encode(changedto_Bytes)
+            final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded_orig
+            return final_bytes_to_encoded_png# was this, using encoded ones, changedto_Bytes
+        else:
+            # PIL.Image.Image muutetaan png byteksi
+            print("justtobytes for training image", justto_bytes)
+            buffer_touse = BytesIO()
+            image_tochange.save(buffer_touse, format="PNG")
+            changedto_Bytes = buffer_touse.getvalue()
+            encoded_orig = base64.b64encode(changedto_Bytes)
+            final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded_orig
+
+            letterboxed_training_img = Image.fromarray(resized_training_img)
+            buffer_touse_just_bytes = BytesIO()
+            letterboxed_training_img.save(buffer_touse_just_bytes, format="PNG")
+            changedto_only_Bytes = buffer_touse_just_bytes.getvalue()
+            #print("changedto_Bytes type ", type(changedto_only_Bytes))
+
+            return final_bytes_to_encoded_png,changedto_only_Bytes
 
 
 # kuvat voivat suoraan näyttää <img> tagissä kun ne on muutettu data:imgage/png base64 muotoon bufferin kautta
@@ -288,7 +309,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
                             results_setted = await pipe.execute()
-                            #logger.info(("results_setted ", results_setted))
+                            logger.info(("results_setted ", results_setted))
                         elif type(separated_invidual) == tuple:
                             #logger.info("separated_invidual is tuple")
                             #print("encoded_whole_batch all")
@@ -308,8 +329,6 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                                 results_setted = await pipe.execute()
                                 logger.info(("results_setted ", results_setted))
 
-
-
                     except redis.exceptions.ResponseError:
                         loggercrier.error(("error setting data "))
 
@@ -327,7 +346,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
                 imgset = await r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
-                #logger.info(imgset)
+                logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
 
@@ -346,9 +365,8 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                 logger.info("waited for one")
 
 
-
     except Exception:
-        loggercrier("encoding image failed! ", exc_info=True)
+        loggercrier.error("encoding image failed! ", exc_info=True)
 
 
 @router.get("/tasks")
@@ -523,24 +541,28 @@ async def prediction_processing(generated_predictID, do_redis, return_for_locust
             ml_inference_log.append(appendable_handleimg)
             reswith_width_height = await image_process(bytes_from_img, ml_inference_log)
             res = reswith_width_height[0]
-            original_image = reswith_width_height[1]
-            original_img_w = reswith_width_height[2]
-            original_img_h = reswith_width_height[3]
-            scale = reswith_width_height[4]
-            pad = reswith_width_height[5]
+            resized_training_img = reswith_width_height[1]
+            original_image = reswith_width_height[2]
+            original_img_w = reswith_width_height[3]
+            original_img_h = reswith_width_height[4]
+            scale = reswith_width_height[5]
+            pad = reswith_width_height[6]
 
             final_composed_images, original_image_to_use = await get_predictions(res, original_image,
-                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess, return_for_locust)
+                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess, return_for_locust, belongto_name)
 
             start_originalencode = time.perf_counter()
             '''if return_for_locust == False:
                 encoded = await asyncio.to_thread(encode_image, original_image_to_use)
             else:'''
-            encoded = gevent.get_hub().threadpool.apply(encode_image, args=(original_image_to_use,))
+            justto_bytes = True
+            encoded_two_images = gevent.get_hub().threadpool.apply(encode_image, args=(original_image_to_use,resized_training_img,justto_bytes))
+            encoded = encoded_two_images[0]
+            training_image = encoded_two_images[1]
             timefromstart_originalencode = (time.perf_counter() - start_originalencode) * 1000
             ml_inference_log.append(timefromstart_originalencode)
             await batchlist_encode(belongto_name, objects_found, final_composed_images, item,
-                                   batchlist, encoded, generated_predictID, original_img_w, original_img_h, ml_inference_log)
+                                   batchlist, encoded, training_image,generated_predictID, original_img_w, original_img_h, ml_inference_log)
 
         #logger.info(("final batchlist length ", len(batchlist)))
 
