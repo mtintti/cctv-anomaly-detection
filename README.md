@@ -63,6 +63,71 @@ sequenceDiagram
 | Redis         | Holds prediction images and JSON for a short time, then they expire.                                      |
 | PostgreSQL    | Users and their saved annotated images and datasets, load-test metrics from Locust.                                            |
 
+## CI/CD and Testing
+
+The backend is tested with **Pytest** through API-level, database-route and ML/prediction tests. Tests use the same FastAPI application interfaces as the frontend, while smaller ML tests exercise image encoding and prediction result construction directly.
+
+```mermaid
+flowchart TD
+    A[GitHub Pull Request to main] --> B[GitHub Actions]
+    B --> C[Python 3.11]
+    C --> D[Install backend requirements]
+    D --> E[Create .env from GitHub Secrets]
+    E --> F[pytest]
+
+    F --> G[FastAPI test client]
+    F --> H[ML unit tests]
+
+    G --> I[/auth routes]
+    G --> J[/predict routes]
+    G --> K[Application dependencies]
+
+    K --> L[(PostgreSQL)]
+    K --> M[(Redis)]
+
+    J --> N[Prediction task]
+    N --> M
+    J --> O[Digitraffic camera image]
+
+    H --> P[Image encoding]
+    H --> Q[Prediction result construction]
+```
+
+### Pytest
+
+Pytest tests the backend at two levels. API tests use the FastAPI test client to exercise authentication and prediction routes, including successful requests, invalid input, missing prediction tasks and asynchronous prediction polling. The database-route tests cover user creation, login and Pydantic validation for usernames, emails and passwords.
+The prediction tests cover the request-to-result flow: a prediction is created with a camera image URL, a task id is returned, and the test polls the task until the result is available. Redis can be replaced with the test Redis path for these prediction tests so the asynchronous task flow can be exercised without depending on persisted prediction results. The tests also verify missing prediction/task ids return `Not Found`.
+
+The ML tests test the data transformation around inference separately from the model itself. Image data is encoded to PNG data URIs, batches containing bounding-box and segmentation images are converted, and prediction results are assembled into the application's response structure. The tests also verify that detected objects such as `pothole` are propagated into the generated result and inference log.
+
+### Testcontainers
+
+The project also contains a **Docker** PostgreSQL test environment using **Testcontainers**. When the test/load-test database dependency is requested, the application starts an ephemeral `postgres:16-alpine` container and obtains its dynamically exposed connection details. The test database is then initialized with the `users` and `training_data_annotations` tables and a fixture user with training-data content.
+
+```mermaid
+sequenceDiagram
+    participant Test as Test / Load-test request
+    participant API as FastAPI
+    participant TC as PostgreSQL Testcontainer
+    participant DB as Test PostgreSQL
+
+    Test->>API: Request with test-container header
+    API->>TC: Start postgres:16-alpine
+    TC-->>API: Host + exposed port + credentials
+    API->>DB: Create users table
+    API->>DB: Create training_data_annotations table
+    API->>DB: Insert fixture user + training data
+    API->>API: Create async connection pool
+    API-->>Test: Use isolated test database
+```
+
+The container-backed connection pool is stored in the FastAPI application state, so subsequent requests reuse the same isolated PostgreSQL instance instead of creating a new database for every request. The normal application path continues to use the configured PostgreSQL pool when the test-container mode is not enabled.
+
+The fixture data represents the same type of information used by the application: a user, a Digitraffic camera image URL, a training image and annotation data.
+When the application shuts down, the shared clients and connection pool are closed and the Testcontainer is stopped.
+
+
+
 ## Views
 <img width="1884" height="830" alt="Screenshot 2026-09-04 113238" src="https://github.com/user-attachments/assets/cbcaf140-3b04-4724-b777-3c53fbe1bf2d" />
 view of users saved images.
