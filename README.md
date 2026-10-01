@@ -78,8 +78,8 @@ flowchart TD
     F --> G[FastAPI test client]
     F --> H[ML unit tests]
 
-    G --> I[/auth routes]
-    G --> J[/predict routes]
+    G --> I[auth routes]
+    G --> J[predict routes]
     G --> K[Application dependencies]
 
     K --> L[(PostgreSQL)]
