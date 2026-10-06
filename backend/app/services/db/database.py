@@ -226,6 +226,39 @@ async def inserting_users_set_dataset_content(sendable,pool, session_user_email,
             except Exception:
                 logger.error("error getting recent training_datas find user by email", exc_info=True)
 
+async def gotten_session_users_dataset_content(emailof_user, pool):
+    async with pool.connection() as aconn:
+        async with aconn.cursor() as curr:
+            try:
+                await curr.execute("SELECT id FROM users WHERE email = %s", (emailof_user,))
+                user_row = await curr.fetchone()
+                if user_row is None:
+                    print("user not found, get_postgres_training_recents")
+                    logger.info(("training recent get rejected, unknown user email ", emailof_user))
+                    return None
+                else:
+                    user_id = user_row[0]
+                    print("user_row all", user_row)
+
+                    try:
+                        print("getting datasets for ",user_id)
+                        await curr.execute("SELECT user_id,name,contains_images, updated_at FROM datasets WHERE user_id = %s", (user_id,))
+
+                        user_dataset_exists = await curr.fetchall()
+                        print("user_dataset_exists??", user_dataset_exists)
+                        if user_dataset_exists is None:
+                            print("user_dataset_exists not found, inserting dataset")
+                            return {'non_sets_found':'could not find any saved datasets'}
+                        else:
+                            logger.info(("type of user_dataset_exists is ", type(user_dataset_exists)))
+                            return {'found_sets_of_user': user_dataset_exists}
+                    except Exception:
+                        logger.error("error in getting all datasets for user", exc_info=True)
+
+            except Exception:
+                logger.error("error getting user by email in gotten_session_users_dataset_content()", exc_info=True)
+
+
 async def getting_proxy_metrics_for_groundtruth(pool, image_name):
     logger.info("in db getting_proxy_metrics_for_groundtruth")
     logger.info(pool.connection())

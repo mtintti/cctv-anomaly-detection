@@ -51,13 +51,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [errormodelSeeable, setErrormodelSeeable] = useState(false);
   const [pending, setPending] = useState(false);
   const toastManager = Toast.createToastManager();
+  const [sidebar_four_recent_additions_imgs, setSidebar_four_recent_additions_imgs] = useState([])
 
   return (
     <QueryClientProvider client={queryClient}>
         {/*<SessionProvider session={session}>*/}
         <Toast.Provider toastManager={toastManager}>
         <StackedNotifications/>
-            <Context.Provider value={{errormodelSeeable, setErrormodelSeeable, pending, setPending}}>
+            <Context.Provider value={{errormodelSeeable, setErrormodelSeeable, pending, setPending, sidebar_four_recent_additions_imgs, setSidebar_four_recent_additions_imgs}}>
                 {children}
             </Context.Provider>
         </Toast.Provider>

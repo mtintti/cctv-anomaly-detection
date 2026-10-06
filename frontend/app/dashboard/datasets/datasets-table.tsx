@@ -67,10 +67,10 @@ export default function DatasetsTable({
   }
 
   function settingSelected_from_recently_added(clicked_item) {
-  console.log("toggleOne index_number", clicked_item.id);
+  console.log("toggleOne index_number", clicked_item.dataset_name);
 
   let found_by_id = recent_data_selected_to_dataset.find(
-    invi_in_chosen_list => invi_in_chosen_list.id === clicked_item.id
+    invi_in_chosen_list => invi_in_chosen_list.dataset_name === clicked_item.dataset_name
   );
 
   console.log("found_by_id", found_by_id);
@@ -83,10 +83,11 @@ export default function DatasetsTable({
     console.log("delete entry from popup", clicked_item);
 
     setRecent_data_selected_to_dataset(prev =>
-      prev.filter(invi_in_chosen_list => invi_in_chosen_list.id !== clicked_item.id)
+      prev.filter(invi_in_chosen_list => invi_in_chosen_list.dataset_name !== clicked_item.dataset_name)
     );
   }
 }
+console.log("recent_data_selected_to_dataset in datasets ", recent_data_selected_to_dataset)
 
   return (
     <section aria-label="" className="rounded-2xl bg-neutral-100 p-4">
@@ -110,15 +111,14 @@ export default function DatasetsTable({
           className="ml-auto min-w-[220px] rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm outline-none focus:border-neutral-500"
         />
       </div>
-      {recent_data_selected_to_dataset.length != 0 && <div className="pl-4 flex">{recent_data_selected_to_dataset.map((invidual =>
+      {recent_data_selected_to_dataset.length != 0 && <div className="pl-4 flex">{recent_data_selected_to_dataset.map((selected_invidual_from_dataset, id_ofitem) =>
           {
-              let third_backspace_in_img_name = invidual.image_name.indexOf("/", 30)
-                  //console.log("third_backspace_in_img_name", third_backspace_in_img_name)
-                  let showable_name_to_user = invidual.image_name.slice(third_backspace_in_img_name+1)
-              return(<div className="bg-blue-100/80 mr-2 flex rounded-t-lg px-2 cursor-pointer" key={invidual.id}><p onClick={()=> setopen_clickedAnnImg_content(true) & setSpecified_AnnImg_content(prev => [...prev, invidual])}>{showable_name_to_user}</p>
-                  <p className="pl-2 pr-2 text-slate-400" onClick={(()=> settingSelected_from_recently_added(invidual))}>x</p>
+                  console.log("invidual is ", selected_invidual_from_dataset, " with index of ", id_ofitem)
+                  let showable_name_to_user = selected_invidual_from_dataset.dataset_name
+              return(<div className="bg-blue-100/80 mr-2 flex rounded-t-lg px-2 cursor-pointer" key={id_ofitem}><p onClick={()=> setopen_clickedAnnImg_content(true) & setSpecified_AnnImg_content(prev => [...prev, selected_invidual_from_dataset])}>{showable_name_to_user}</p>
+                  <p className="pl-2 pr-2 text-slate-400" onClick={(()=> settingSelected_from_recently_added(selected_invidual_from_dataset))}>x</p>
                   </div>
-          )}))}
+          )})}
           </div>
       }
 
@@ -128,7 +128,7 @@ export default function DatasetsTable({
             <tr className="border-b border-neutral-200 text-neutral-500">
               <th className="w-8 py-2 font-normal" />
               <th className="py-2 font-normal">Datasets Name</th>
-              <th className="py-2 font-normal">File Size</th>
+              <th className="py-2 font-normal">Datastes Size</th>
               <th className="py-2 font-normal">Last Changed</th>
               <th className="py-2 font-normal">Updated by</th>
               <th className="w-10 py-2 font-normal">Actions</th>
@@ -150,13 +150,16 @@ export default function DatasetsTable({
             )}
 
             {!isLoading &&
-              perPaged_RecentContent.map((item) => {
+              perPaged_RecentContent.map((item, index_per_item) => {
                   let is_relatively_new_addition = false;
                   let current_items_time = new Date(item.updated_at);
                   let found_by_id_in_selected_checkbox = false;
-                  let third_backspace_in_img_name = item.image_name.indexOf("/", 30)
-                  //console.log("third_backspace_in_img_name", third_backspace_in_img_name)
-                  let showable_name_to_user = item.image_name.slice(third_backspace_in_img_name+1)
+                  //console.log("index_per_item ", index_per_item)
+
+                  let showable_name_to_user = item.dataset_name;
+                  let howmany_img_datasetcontains= item.images_number.length
+                  //console.log("item looped ", item)
+                  //console.log("showable_name_to_user is ", showable_name_to_user)
                   //let sum_of_times = current_items_time - users_time;
                   if(current_items_time.getFullYear() === users_time.getFullYear()){
                     if(current_items_time.getMonth() +1 === users_time.getMonth()+1){
@@ -167,7 +170,7 @@ export default function DatasetsTable({
                         }
                     }
                   }
-                const found_by_id_in_selected = recent_data_selected_to_dataset.find(invi_in_chosen_list => invi_in_chosen_list.id === item.id)
+                const found_by_id_in_selected = recent_data_selected_to_dataset.find(invi_in_chosen_list => invi_in_chosen_list.dataset_name === item.dataset_name)
                   //console.log("sum_of_times", sum_of_times)
                 if(found_by_id_in_selected != undefined){
                     found_by_id_in_selected_checkbox = true
@@ -177,19 +180,19 @@ export default function DatasetsTable({
 
 
                 return(
-                <tr key={item.id} className={`${found_by_id_in_selected ? 'bg-neutral-200/50' : 'bg-neutral-100'} hover:bg-neutral-300/50 border-b border-neutral-200 last:border-0`} onClick={()=> settingSelected_from_recently_added(item)}>
+                <tr key={index_per_item} className={`${found_by_id_in_selected ? 'bg-neutral-200/50' : 'bg-neutral-100'} hover:bg-neutral-300/50 border-b border-neutral-200 last:border-0`} onClick={()=> settingSelected_from_recently_added(item)}>
                   <td className="py-3 pl-2">
                     <input
                       type="checkbox"
                       checked={found_by_id_in_selected_checkbox}
                       onChange={e => found_by_id_in_selected_checkbox ===true}
-                      aria-label={`Select ${item.image_name}`}
+                      aria-label={`Select ${item.dataset_name}`}
                     />
                   </td>
                   <td className="py-3 text-neutral-800">{showable_name_to_user}</td>
                   {/* File size is hardcoded per current requirements — the
                       API doesn't report it yet. See review notes. */}
-                  <td className="py-3 text-neutral-500">1gb</td>
+                  <td className="py-3 text-neutral-500">{howmany_img_datasetcontains}</td>
                   {is_relatively_new_addition ? <><td className="flex py-3 text-neutral-900">{current_items_time.toLocaleTimeString()}
                   <p className="bg-blue-400 w-2 h-2 rounded-full animate-ping"></p></td></>
                   :

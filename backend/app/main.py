@@ -9,7 +9,7 @@ from .services.task_manager import task_manager
 from ..ml.api.predict import router, prediction_processing
 from ..ml.api.sam import sam_router
 from .config import logmain, logger
-from .dependecies import shared_client, shared_client_close, get_redis_connection, get_onnx_sess, get_client_connection
+from .dependecies import shared_client, shared_client_close
 from contextlib import asynccontextmanager
 
 # client (httpx.AsyncClient) on laitettuna alkamaan kun appi alkaa,
@@ -20,10 +20,7 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     await shared_client(app)
     logmain()
-    # start_timer()
-    #ml_backend()
     await warmup_request()
-    #await open_pool()
     yield
     await shared_client_close(app)
 

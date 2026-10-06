@@ -1,5 +1,5 @@
 'use client'
-import {Context} from '../../providers/tanstack'
+import {Context} from '../providers/tanstack'
 import {
   useQuery,
   useMutation,
@@ -27,6 +27,7 @@ interface RecentUserContents {
 
 export default function Db_UserContents({session}){
         const queryClient = useQueryClient()
+         let {setSidebar_four_recent_additions_imgs, sidebar_four_recent_additions_imgs} = useContext(Context)
         const { isPending, error,  data, isFetching } = useQuery({ queryKey: ['db_contents'],retry: 3, refetchInterval: 5000, enabled: Boolean(session.user),
             queryFn: async () => {
             const res = await fetch(`/api/auth/db_recents`,)
@@ -37,8 +38,15 @@ export default function Db_UserContents({session}){
         useEffect(() => {
             if(!data) return;
             //console.log("db_data gotten to frontend", data)
+            const four_recent_images_sidebar = data.slice(0, 4).map((item) => ({
+              id: item.id,
+              training_img: item.training_img,
+              alt: item.image_name,
+            }));
 
-        }, [data]);
+          setSidebar_four_recent_additions_imgs(four_recent_images_sidebar);
+
+        }, [data, setSidebar_four_recent_additions_imgs]);
     const RecentUserContents_setted: RecentUserContents[] = data != undefined && data.length != 0  ? data : [];
     const updatedByLabel = session.user?.username ?? session.user?.email ?? "Unknown user";
     const [open_clickedAnnImg_content, setopen_clickedAnnImg_content] = useState(false)
@@ -54,11 +62,6 @@ export default function Db_UserContents({session}){
         {RecentUserContents_setted != undefined && (
             <>
           <Sidebar
-            recentThumbnails={RecentUserContents_setted.slice(0, 4).map((item) => ({
-              id: item.id,
-              training_img: item.training_img,
-              alt: item.image_name,
-            }))}
           />
 
           <main className="flex-1 px-8 py-6">

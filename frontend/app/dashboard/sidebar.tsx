@@ -1,6 +1,8 @@
 "use client";
 
 import { LayoutDashboard, Image as ImageIcon, Boxes, ListChecks, Settings } from "lucide-react";
+import { useContext } from 'react';
+import { Context } from '../providers/tanstack';
 
 interface SidebarNavItem {
   label: string;
@@ -18,8 +20,10 @@ const NAV_ITEMS: SidebarNavItem[] = [
 ];
 
 
-export default function Sidebar({ recentThumbnails = [] }) {
-  const slots = Array.from({ length: 4 }, (_, i) => recentThumbnails[i]);
+export default function Sidebar() {
+    const context = useContext(Context);
+    const { sidebar_four_recent_additions_imgs } = context;
+    const slots = Array.from({ length: 4 }, (_, i) => sidebar_four_recent_additions_imgs[i]);
 
   return (
     <aside className="relative flex h-full w-60 shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-neutral-50">
