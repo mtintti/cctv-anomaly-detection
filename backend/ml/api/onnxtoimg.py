@@ -14,6 +14,7 @@ from starlette.requests import Request
 from backend.app.api.db_routes import proxy_metrics_from_url_image
 from backend.app.config import logger
 from backend.app.dependecies import get_client_connection
+from backend.ml.api.proxy_metrics import calculate_proxy_map_metrics
 from backend.ml.api.sam import create_mask_yxz_labels
 from backend.ml.schema.final_imgs import FinalImagesObject
 from backend.ml.schema.predict_obj import FoundOnnxObject
@@ -221,20 +222,34 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
         annotation_buffers.clear()
 
 
-    tensored_all_segmentmasks = torch.as_tensor(all_segmasks)
     # torchMetrics-kirjastoa hyödynnetään mAP-metriikkan tekemiseen kunhan nimeä vastaavan kuva lyötyy ja/tai
     # 50 kilometrin aluella (lat, lon arvoja käyttäen /db/database.py:ssä) käyttäjän valitsemasta kamerasta löytyy tallennettuja ann textejä postgres databasessa
     # proxy metriikalla saadan arvioitua onko onnx segmentaatio maskit miten oikeita vai vääriä käyttäen confusion matriisia
+    # bool (N, 512, 512). The masks in all_segmasks are uint8 0/255, torchmetrics wants bool for iou_type="segm"
+    tensored_all_segmentmasks = torch.from_numpy(np.stack(all_segmasks)) > 0
+    # labels MUST be integer, the model output is float32 so cast once here
+    tensored_all_class_labels = torch.as_tensor(np.asarray(all_class_labels).astype(np.int64))
+    tensored_all_class_scores = torch.as_tensor(np.asarray(all_class_scores, dtype=np.float32))
+
+    proxy_map_metrics = None
     if listof_proxy_camera_results is not None:
+        print("length of listof_proxy_camera_results", len(listof_proxy_camera_results) )
+        # boxes: non_reshaped_bbox_coords_as_tensor (xyxy in the 512x512 letterboxed space), NOT `coords`
+        # (those are de-letterboxed to the camera image size and would never overlap the stored annotations)
         preds = [dict(
-        masks=tensored_all_segmentmasks,
-        labels=tensor(all_class_labels),
-        scores=tensor(all_class_scores),
+            boxes=non_reshaped_bbox_coords_as_tensor.float(),
+            masks=tensored_all_segmentmasks,
+            scores=tensored_all_class_scores,
+            labels=tensored_all_class_labels,
         )]
-        print("preds keys are ",preds[0].keys())
-        for p in preds[0]:
-            print("p ", p)
-            print("preds ",preds[0][p].shape)
+
+        try:
+            proxy_map_metrics = calculate_proxy_map_metrics(preds, listof_proxy_camera_results)
+            print("all proxy_map_metrics contents are shown next: ")
+            logger.info(proxy_map_metrics)
+            logger.info(("proxy map metrics for ", belongto_name, proxy_map_metrics["bbox"], proxy_map_metrics["segm"]))
+        except Exception:
+            logger.error("error calculating proxy mAP", exc_info=True)
 
     return final_composed_images
 
