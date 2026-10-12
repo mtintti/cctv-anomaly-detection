@@ -39,4 +39,5 @@ class PredictID(BaseModel):
     jsonresponse: list[JsonResponse]
     metrics: list[Metrics]
     annotations: Annotations
+    proxy_metrics: list | None
 

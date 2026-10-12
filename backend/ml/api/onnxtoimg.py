@@ -14,6 +14,7 @@ from starlette.requests import Request
 from backend.app.api.db_routes import proxy_metrics_from_url_image
 from backend.app.config import logger
 from backend.app.dependecies import get_client_connection
+from backend.ml.api.proxy_metrics import calculate_proxy_map_metrics
 from backend.ml.api.sam import create_mask_yxz_labels
 from backend.ml.schema.final_imgs import FinalImagesObject
 from backend.ml.schema.predict_obj import FoundOnnxObject
@@ -115,14 +116,14 @@ def color_and_draw_segmentation_bbox(cropped, non_reshaped_training_mask,all_col
             #print("moved past combining both overlays")
         else:
             logger.error("in onnx_to_img length of overlay_seg or overlay_bbox is rgb instead of rgba")
-        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended, original_rgba=original_rgba, segment_mask=training_img_cropped_invidual_mask, annotations=None)
+        addable = FinalImagesObject(index=i, overlay_seg=overlay_segmentmask_image, overlay_bbox=overlay_bbox_image, blended_together=blended, original_rgba=original_rgba, segment_mask=training_img_cropped_invidual_mask, annotations=None, proxy_metrics=None)
         final_composed_images.append(addable)
         #return overlay_segmentmask_image, overlay_bbox_image, blended
 
     return final_composed_images
 
 
-async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image, final_composed_images,belongto_name):
+async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image, final_composed_images,belongto_name, resized_training_image):
 
     coords = []
     all_colors = []
@@ -221,25 +222,41 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
         annotation_buffers.clear()
 
 
-    tensored_all_segmentmasks = torch.as_tensor(all_segmasks)
     # torchMetrics-kirjastoa hyödynnetään mAP-metriikkan tekemiseen kunhan nimeä vastaavan kuva lyötyy ja/tai
     # 50 kilometrin aluella (lat, lon arvoja käyttäen /db/database.py:ssä) käyttäjän valitsemasta kamerasta löytyy tallennettuja ann textejä postgres databasessa
     # proxy metriikalla saadan arvioitua onko onnx segmentaatio maskit miten oikeita vai vääriä käyttäen confusion matriisia
+    # bool (N, 512, 512). The masks in all_segmasks are uint8 0/255, torchmetrics wants bool for iou_type="segm"
+    tensored_all_segmentmasks = torch.from_numpy(np.stack(all_segmasks)) > 0
+    # labels MUST be integer, the model output is float32 so cast once here
+    tensored_all_class_labels = torch.as_tensor(np.asarray(all_class_labels).astype(np.int64))
+    tensored_all_class_scores = torch.as_tensor(np.asarray(all_class_scores, dtype=np.float32))
+
+    proxy_map_metrics = None
     if listof_proxy_camera_results is not None:
+        print("length of listof_proxy_camera_results", len(listof_proxy_camera_results) )
+        # boxes: non_reshaped_bbox_coords_as_tensor (xyxy in the 512x512 letterboxed space), NOT `coords`
+        # (those are de-letterboxed to the camera image size and would never overlap the stored annotations)
         preds = [dict(
-        masks=tensored_all_segmentmasks,
-        labels=tensor(all_class_labels),
-        scores=tensor(all_class_scores),
+            boxes=non_reshaped_bbox_coords_as_tensor.float(),
+            masks=tensored_all_segmentmasks,
+            scores=tensored_all_class_scores,
+            labels=tensored_all_class_labels,
         )]
-        print("preds keys are ",preds[0].keys())
-        for p in preds[0]:
-            print("p ", p)
-            print("preds ",preds[0][p].shape)
+
+        try:
+            proxy_map_metrics = calculate_proxy_map_metrics(preds, listof_proxy_camera_results, original_image, resized_training_image)
+            print("all proxy_map_metrics contents are shown next: ")
+            logger.info(proxy_map_metrics)
+            logger.info(("proxy map metrics for ", belongto_name, proxy_map_metrics["bbox"], proxy_map_metrics["segm"]))
+            print("type of proxy metrics ", type(proxy_map_metrics))
+            final_composed_images[0].proxy_metrics = proxy_map_metrics
+        except Exception:
+            logger.error("error calculating proxy mAP", exc_info=True)
 
     return final_composed_images
 
 
-async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust, belongto_name):
+async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust, belongto_name, resized_training_image):
 
     indx = 0
     conf_to_pass = 0.10
@@ -284,7 +301,7 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
         '''if return_for_locust != True:
             final_composed_images = await asyncio.to_thread(arrange_full_segmentation_mask, objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
         else:'''
-        final_composed_images = await gevent.get_hub().threadpool.apply(arrange_full_segmentation_mask, args=(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images, belongto_name))
+        final_composed_images = await gevent.get_hub().threadpool.apply(arrange_full_segmentation_mask, args=(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images, belongto_name, resized_training_image))
         #print(" ")
 
         #return overlay_seg, overlay_bbox, blended_together, original_image_RGBA
@@ -294,6 +311,6 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
         print("No predictions found!! ", len(passedboxs) , len(passedcoeffs))
         original_image_none = original_image.convert('RGBA')
         addable_nonFound = FinalImagesObject(index=len(objects_found)+1, overlay_seg=None, overlay_bbox=None,
-                                    blended_together=None, original_rgba=original_image_none, segment_mask=None, annotations=None)
+                                    blended_together=None, original_rgba=original_image_none, segment_mask=None, annotations=None, proxy_metrics=None)
         final_composed_images.append(addable_nonFound)
         return final_composed_images, original_image_none

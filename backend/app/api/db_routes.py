@@ -5,13 +5,14 @@ from fastapi.params import Depends
 
 from backend.app.config import logger
 from backend.app.dependecies import get_pool
+from backend.app.schemas.datasets import Datasets
 from backend.app.schemas.get_recents_training_data import Recents_training_data
 from backend.app.schemas.locust_metrics_real_db import Locust_to_postgres
 from backend.app.schemas.login import Login
 from backend.app.schemas.signin import Signup
 from backend.app.services.db.database import get_user_in_db, insert_user_in_db, inserting_pg_training, \
     get_postgres_training_recents, inserting_locust_comparison_metrics, getting_proxy_metrics_for_groundtruth, \
-    inserting_users_set_dataset_content
+    inserting_users_set_dataset_content, gotten_session_users_dataset_content
 
 router = APIRouter(tags=["db"], responses={404: {"description": "not found :<"}})
 
@@ -103,6 +104,23 @@ async def sending_content_to_user_dataset(request:Request, pool=Depends(get_pool
     email = request.headers.get('session_email')
     dataset_name = request.headers.get('dataset_name')
     return await inserting_users_set_dataset_content(sendable['sendable'], pool, session_user_email=email, dataset_name=dataset_name)
+
+@router.get("/auth/get_user_all_datasets")
+async def showing_session_users_dataset_content(request:Request, pool=Depends(get_pool)):
+    emailtouse = request.headers.get('session_email')
+    datasets_all = await gotten_session_users_dataset_content(emailtouse,pool)
+    print("datasets_all ", datasets_all)
+    validated_all_datasets = []
+    for invi in datasets_all['found_sets_of_user']:
+        print("invi ", invi)
+        user_id = invi[0]
+        dataset_name = invi[1]
+        images_number = invi[2]
+        updated_at = invi[3]
+        validated_entry = Datasets(user_id=user_id, dataset_name=dataset_name, images_number=images_number, updated_at=updated_at)
+        validated_all_datasets.append(validated_entry)
+    print("length of validated datasets from db", len(validated_all_datasets))
+    return validated_all_datasets
 
 @router.post("/auth/proxy_metrics_from_url_image")
 async def proxy_metrics_from_url_image(image_name: str,pool=Depends(get_pool)):

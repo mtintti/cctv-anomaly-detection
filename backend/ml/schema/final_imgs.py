@@ -17,3 +17,4 @@ class FinalImagesObject:
     original_rgba: Image.Image | None
     segment_mask: ndarray
     annotations: str | None
+    proxy_metrics: list | None
