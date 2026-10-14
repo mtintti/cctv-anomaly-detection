@@ -92,6 +92,8 @@ flowchart TD
     H --> P[Image encoding]
     H --> Q[Prediction result construction]
 ```
+Overview of quicker inference for interactive labelling tool for further specifying damages.
+<img width="1914" height="508" alt="ml-api-sam_uml" src="https://github.com/user-attachments/assets/8d18baeb-c92c-4b81-a562-dfb8c3e76fd6" />  
 
 ### Pytest
 
@@ -126,15 +128,11 @@ The container-backed connection pool is stored in the FastAPI application state,
 The fixture data represents the same type of information used by the application: a user, a Digitraffic camera image URL, a training image and annotation data.
 When the application shuts down, the shared clients and connection pool are closed and the Testcontainer is stopped.
 
-
-
 ## Views
 <img width="1884" height="830" alt="Screenshot 2026-09-04 113238" src="https://github.com/user-attachments/assets/cbcaf140-3b04-4724-b777-3c53fbe1bf2d" />
 view of users saved images.
 
-<img width="1914" height="508" alt="ml-api-sam_uml" src="https://github.com/user-attachments/assets/8d18baeb-c92c-4b81-a562-dfb8c3e76fd6" />
-Overview of quicker inference for interactive labelling tool for further specifying damages.  
 
-<img width="1413" height="714" alt="Screenshot 2026-08-28 122459" src="https://github.com/user-attachments/assets/842af795-5bec-4f78-9468-4b838d30786f" />
+<img width="1849" height="851" alt="Highway Annotation Dashboard" src="https://github.com/user-attachments/assets/7f68e2a7-8f68-4dac-9cba-3800e13d19e2" />
 
 Longer inference from custom trained segmentation model, showing one green alligator crack and a red longitude crack in the road.
