@@ -108,7 +108,7 @@ export default function ProxyMetricsCards({ proxyMetrics }: { proxyMetrics?: Pro
 
   return (
     <div className="@container">
-      <div className="grid grid-cols-1 gap-1 @md:grid-cols-2">
+      <div className="flex grid grid-rows-1 gap-1 @md:grid-cols-2">
         <MapScoreCard title="Bounding box" scores={proxyMetrics.bbox} />
         <MapScoreCard title="Segmentation mask" scores={proxyMetrics.segm} />
         <RegionalClassShareCard
