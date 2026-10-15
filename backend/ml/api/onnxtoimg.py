@@ -10,9 +10,11 @@ import ultralytics.utils.ops
 from PIL import Image
 from PIL.ImageDraw import ImageDraw
 from starlette.requests import Request
+import anyio
+
 
 from backend.app.api.db_routes import proxy_metrics_from_url_image
-from backend.app.config import logger
+from backend.app.config import logger, loggercrier
 from backend.app.dependecies import get_client_connection
 from backend.ml.api.proxy_metrics import calculate_proxy_map_metrics
 from backend.ml.api.sam import create_mask_yxz_labels
@@ -166,19 +168,18 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
     # käytetään lähellä olevia tallennettuja predictioneita tekemään confusion matriisi käyttämällä niitä referenssinä olevista luokkanumeroista
     # tarvitaan feikki request objecti hakemaan httpx.AsyncClient connection app.state:sta
     try:
-        client = httpx.AsyncClient(base_url="http://localhost:8000/")
-        list_of_matching_near_cams = await client.post(
-            url=f"auth/proxy_metrics_from_url_image?image_name={belongto_name}")
-        print("received from db")
-        listres = list_of_matching_near_cams.json()
-        print(listres)
-        print("type of ", type(listres))
-        if len(listres) > 0:
-            listof_proxy_camera_results=listres
+        async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=2) as client:
+            list_of_matching_near_cams = await client.post(
+                url=f"/auth/proxy_metrics_from_url_image?image_name={belongto_name}")
+            print("received from db")
+            listres = list_of_matching_near_cams.json()
+            print(listres)
+            print("type of ", type(listres))
+            if len(listres) > 0:
+                listof_proxy_camera_results=listres
 
     except Exception:
-        logger.warning("Expection on getting proxy metrics", exc_info=True)
-
+        loggercrier.error("Exception on getting proxy metrics using client.post()", exc_info=True)
     final_mask_probs, non_reshaped_mask = reshape_combine_coeffprototype(segmasks_prototypes=segmasks_prototypes, coeffs=finalised_coeffs,
                                                       tensor_width=512, tensor_height=512,
                                                       original_img_w=original_img_w, original_img_h=original_img_h,

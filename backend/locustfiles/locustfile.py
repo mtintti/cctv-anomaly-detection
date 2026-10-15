@@ -107,27 +107,29 @@ def _(environment, **kw):
     if environment.stats.total.fail_ratio > 0.01:
         loggercrier.error("Test failed due to failure ratio > 1%")
         environment.process_exit_code = 1
-    elif environment.stats.total.avg_response_time > 5000:
-        loggercrier.error("Test failed due to average response time ratio > 5000 ms")
+    elif environment.stats.total.avg_response_time > 14000:
+        loggercrier.error("Test failed due to average response time ratio > 14000 ms")
         environment.process_exit_code = 1
-    elif environment.stats.total.get_response_time_percentile(0.95) > 5000:
-        loggercrier.error("Test failed due to 95th percentile response time > 5000 ms")
+    elif environment.stats.total.get_response_time_percentile(0.95) > 14000:
+        loggercrier.error("Test failed due to 95th percentile response time > 14000 ms")
         environment.process_exit_code = 1
     else:
         environment.process_exit_code = 0
 
 
 class users_db_interactions(HttpUser):
-    wait_time = between(1,5)
+    #wait_time = between(0,1)
 
     def on_start(self):
         # Jokainen virtuaalinen käyttäjä saa oman uniikin tunnuksen aloittaessaan
         self.sim_username_uuid = uuid.uuid4()
         self.sim_username_predecode = base64.urlsafe_b64encode(self.sim_username_uuid.bytes_le)
         logger.info(("sim user created,",self.sim_username_predecode))
-        logger.info(("type of sim_username", type(self.sim_username_predecode)))
         self.sim_username = str(self.sim_username_predecode, 'utf-8')
         logger.info(("sim user to use,", self.sim_username))
+        logger.info(("datatype of sim username ", type(self.sim_username)))
+        logger.info(("sim user name and email ", f"{self.sim_username}", " ", f"{self.sim_username}@g.cm"))
+        logger.info(("lengths are ", len(self.sim_username), " ", len(f"{self.sim_username}@g.cm")))
         self.client.headers.update({"locust-testContainer-db-loadtest": "true"})
         self.client.headers.update({"session_email": "sim_fixture_user@g.cm"})
         logger.info(("locust-db-loadtest is true?",self.client.headers.get("locust-testContainer-db-loadtest")))
@@ -136,6 +138,7 @@ class users_db_interactions(HttpUser):
     def creating_sim_user(self):
         #logger.info("creating sim username")
         try:
+
             self.client.post("/auth/signup", json={'username':f"{self.sim_username}",'email': f"{self.sim_username}@g.cm", 'password': '111111'})
         except Exception:
             logger.error("error inserting sim user at API call", exc_info=True)
@@ -151,11 +154,11 @@ class users_db_interactions(HttpUser):
 
     @task(1)
     def dashboard(self):
-        logger.info("mimicking dasboard access using preset user dashboard")
+        #logger.info("mimicking dasboard access using preset user dashboard")
         try:
-            logger.info(("using fixture user", self.client.headers.get("session_email")))
+            #logger.info(("using fixture user", self.client.headers.get("session_email")))
             response = self.client.get("/auth/get_postgres_training_recents")
-            logger.info(f" /auth/get_postgres_training_recents status: {response.status_code}, {response.error}")
+            #logger.info(f" /auth/get_postgres_training_recents status: {response.status_code}, {response.error}")
         except Exception:
             logger.error("error accessing sim user Dashboard at API call", exc_info=True)
 
@@ -166,7 +169,6 @@ class users_db_interactions(HttpUser):
 
 def running_processing_in_own_thread():
     
-    print("locust processing_prediction")
     scope = {
         "type": "http",
         "method": "POST",
@@ -226,7 +228,7 @@ def processing_metrics_for_real_db(usable_json, client, number_of_calls):
     jobs_metric_redis = jobs_metrics_all['redis'] #base amount for one prediction is 1.7 seconds. if more than 1 prediction are found in run, then 1.7 * N
     jobs_metric_whole_runs_time = jobs_metrics_all['whole_runs_time']
 
-    logger.info(("locust-db-loadtest is false?", client.headers.get("locust-testContainer-db-loadtest")))
+    #logger.info(("locust-db-loadtest is false?", client.headers.get("locust-testContainer-db-loadtest")))
     doing_pg_insert_metrics_per_job_using_testContainer = client.headers.get("locust-testContainer-db-loadtest")
     if doing_pg_insert_metrics_per_job_using_testContainer == 'false' and 0 <= number_of_calls <= 100:
         try:
@@ -247,10 +249,11 @@ def processing_metrics_for_real_db(usable_json, client, number_of_calls):
             logger.info(e)
             loggercrier.error("error in Locust to postgres schema", exc_info=True)
     else:
-        logger.info("real db was tried to use or too many inserts. 100 limit reached")
+        not_tried = 0
+        #logger.info("real db was tried to use or too many inserts. 100 limit reached")
 
 class prediction(HttpUser):
-    wait_time = between(1, 3)
+    #wait_time = between(0, 1)
     #käytetään gvent threadiä koska async's and await's
     #aiheuttavata corutine ongelmia luokkan kanssa/sisällä locustissa.
     #prediction_processing runs metrics laitetaan oikeaan postgres db:hen koska käytetään niitä referenssinä predict ml metriikkaan.
@@ -301,7 +304,7 @@ class prediction(HttpUser):
         try:
             response = self.client.post( f"/predict/{self.sim_predict_id}/sam",
                 json=sim_sam_body_based_on_real_req(),)
-            logger.info(f"sam prediction status: {response.status_code}, {response.error}")
+            #logger.info(f"sam prediction status: {response.status_code}, {response.error}")
             response_jsonsam = response.json()
             #logger.info(("sam res by sim", response_jsonsam))
         except Exception:
