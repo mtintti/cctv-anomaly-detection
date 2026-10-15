@@ -115,7 +115,7 @@ async def shared_client(app):
 
     connection_info = (
     f"dbname={settings.db_name} "f"user={settings.db_user} "f"password={settings.db_pass} "f"host={settings.db_host} "f"port={settings.db_port}")
-    pool = psycopg_pool.AsyncConnectionPool(connection_info, max_size=20, open=False)
+    pool = psycopg_pool.AsyncConnectionPool(connection_info, max_size=110, open=False)
 
     sess = onnxruntime.InferenceSession('backend/ml/best.onnx')
 
@@ -183,7 +183,7 @@ async def get_pool(request:Request):
             logger.info("creating_sim users and training_data_table finished in init")
 
             # käytetään ConnectionPoolia simuloituun Locust trafficiin.
-            sim_locust_pool = psycopg_pool.AsyncConnectionPool(connection_info, max_size=20, open=False)
+            sim_locust_pool = psycopg_pool.AsyncConnectionPool(connection_info, max_size=110, open=False)
 
             await sim_locust_pool.open()
             await sim_locust_pool.wait()

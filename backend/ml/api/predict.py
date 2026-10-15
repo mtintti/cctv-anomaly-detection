@@ -203,7 +203,7 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
 def encode_image(image_tochange, resized_training_img, justto_bytes=None):
 
         if justto_bytes is None:
-            print("justtobytes for training image", justto_bytes)
+            #print("justtobytes for training image", justto_bytes)
             #PIL.Image.Image muutetaan png byteksi
             buffer_touse = BytesIO()
             #print("imgage_tochange type ", type(image_tochange))
@@ -214,7 +214,7 @@ def encode_image(image_tochange, resized_training_img, justto_bytes=None):
             return final_bytes_to_encoded_png# was this, using encoded ones, changedto_Bytes
         else:
             # PIL.Image.Image muutetaan png byteksi
-            print("justtobytes for training image", justto_bytes)
+            #print("justtobytes for training image", justto_bytes)
             buffer_touse = BytesIO()
             image_tochange.save(buffer_touse, format="PNG")
             changedto_Bytes = buffer_touse.getvalue()
@@ -258,24 +258,24 @@ def encode_image_in_batch(image_tochange, samInference = False):
                     to_use.append(b)
             return to_use # was this, using encoded ones, changedto_Bytes
         else:
-            print("sam inference")
-            print("all encode batch type", type(image_tochange[0]))
-            print("length of encode batch ", len(image_tochange))
+            #print("sam inference")
+            #print("all encode batch type", type(image_tochange[0]))
+            #print("length of encode batch ", len(image_tochange))
             to_use = []
             for b in image_tochange:
-                print("to use ", len(to_use))
+                #print("to use ", len(to_use))
                 #PIL.Image.Image muutetaan png byteksi
                 buffer_touse = BytesIO()
-                print("b1 type ", type(b[0]))
+                #print("b1 type ", type(b[0]))
                 b[0].save(buffer_touse, format="PNG")
                 changedto_Bytes = buffer_touse.getvalue()
                 encoded = base64.b64encode(changedto_Bytes)
                 final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
 
-                print("to use ", len(to_use))
+                #print("to use ", len(to_use))
                 # PIL.Image.Image muutetaan png byteksi
                 buffer_touse2 = BytesIO()
-                print("b2 type ", type(b[1]))
+                #print("b2 type ", type(b[1]))
                 b[1].save(buffer_touse2, format="PNG")
                 changedto_Bytes2 = buffer_touse2.getvalue()
                 encoded2 = base64.b64encode(changedto_Bytes2)
@@ -301,7 +301,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                         separated_invidual = encoded_whole_batch[0]
 
                         if type(separated_invidual) == list:
-                            logger.info("separated_invidual is list")
+                            #logger.info("separated_invidual is list")
                             final_bytes_to_resBbox = separated_invidual[b][0]
                             final_bytes_to_resSeg = separated_invidual[b][1]
 
@@ -309,7 +309,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
                             results_setted = await pipe.execute()
-                            logger.info(("results_setted ", results_setted))
+                            #logger.info(("results_setted ", results_setted))
                         elif type(separated_invidual) == tuple:
                             #logger.info("separated_invidual is tuple")
                             #print("encoded_whole_batch all")
@@ -325,9 +325,9 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             #we are at the end of batchlist, all else orig, seg and bbox images have been looped over
                             # next sending all images to redis on one go using 'global' pipe
                             if b == (len(batchlist)-1):
-                                logger.info(("b", b, " batchlist length", (len(batchlist) - 1)))
+                                #logger.info(("b", b, " batchlist length", (len(batchlist) - 1)))
                                 results_setted = await pipe.execute()
-                                logger.info(("results_setted ", results_setted))
+                                #logger.info(("results_setted ", results_setted))
 
                     except redis.exceptions.ResponseError:
                         loggercrier.error(("error setting data "))
@@ -346,7 +346,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
                 imgset = await r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
-                logger.info(imgset)
+                #logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
 
@@ -357,12 +357,13 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                 logger.info(("b is", b))
                 secondsbase = 1.7
                 total_waiting_base_per_pred = secondsbase * b
-                logger.info(("total_waiting_base_per_pred", total_waiting_base_per_pred))
-                gevent.sleep(total_waiting_base_per_pred)
+                #logger.info(("total_waiting_base_per_pred", total_waiting_base_per_pred))
+                #gevent.sleep(total_waiting_base_per_pred)
             elif b == 0:
-                gevent.sleep(1.7)
-                logger.info(("b is", b))
-                logger.info("waited for one")
+                first_pred = 1
+                #gevent.sleep(1.7)
+                #logger.info(("b is", b))
+                #logger.info("waited for one")
 
 
     except Exception:
@@ -385,31 +386,31 @@ def task_status(task_id: uuid.UUID):
 async def request_results_with_fake_redis(req: Request, predict_id:uuid.UUID, task_id_by_manager: uuid.UUID, response: Response, fake_redis_for_tests: bool = Form(default=False)):
     found = None
     if fake_redis_for_tests == True:
-        print("fake redis is used again")
+        #print("fake redis is used again")
         r = get_fake_redis_connection(request=req)
-        print("r is ", r)
+        #print("r is ", r)
         found = r.get(f"json_meta:{predict_id}:json")
-        print("")
-        print("found is with fake", found)
+        #print("")
+        #print("found is with fake", found)
 
     record_by_id_of_task = task_status(task_id_by_manager)
-    print("record_by_id_of_task", record_by_id_of_task)
+    #print("record_by_id_of_task", record_by_id_of_task)
     if found is None:
 
         if record_by_id_of_task is None:
             response.status_code = status.HTTP_404_NOT_FOUND
-            print("record by id ", record_by_id_of_task)
+            #print("record by id ", record_by_id_of_task)
             return {"none found" : predict_id, "records status" : record_by_id_of_task}
         else:
             #task is in inprogess or finished, and not found in Redis db
             response.status_code = status.HTTP_201_CREATED
             response.headers.append('Retry-After',str(3000))
-            print("HEADERS SET backend ", response.headers.keys())
+            #print("HEADERS SET backend ", response.headers.keys())
             return {"record by id of task":record_by_id_of_task, "redis db found":found}
 
     else:
         #foundFalse = TEST_PREDICTIONS
-        print("record by id, found JSON data", record_by_id_of_task)
+        #print("record by id, found JSON data", record_by_id_of_task)
         response.status_code = status.HTTP_200_OK
     return {"found":found, "record by id of task":record_by_id_of_task}
 
@@ -433,19 +434,19 @@ async def request_results(predict_id:uuid.UUID, task_id_by_manager: uuid.UUID, r
 
         if record_by_id_of_task is None:
             response.status_code = status.HTTP_404_NOT_FOUND
-            print("record by id ", record_by_id_of_task)
+            ##print("record by id ", record_by_id_of_task)
             return {"none found" : predict_id, "records status" : record_by_id_of_task}
         else:
             #task is in inprogess or finished, and not found in Redis db
             response.status_code = status.HTTP_201_CREATED
             response.headers.append('Retry-After',str(3000))
-            print("HEADERS SET backend ", response.headers.keys())
+            ##print("HEADERS SET backend ", response.headers.keys())
             return {"record by id of task":record_by_id_of_task, "redis db found":found}
 
     else:
         #foundFalse = TEST_PREDICTIONS
         record_by_id_of_task = task_manager.store.get(task_id_by_manager)
-        print("record by id, found JSON data", record_by_id_of_task)
+        ##print("record by id, found JSON data", record_by_id_of_task)
         response.status_code = status.HTTP_200_OK
     return {"found":found, "record by id of task":record_by_id_of_task}
 
