@@ -4,7 +4,9 @@ import io
 import time
 import uuid
 import zlib
+from sys import getsizeof
 
+import cv2
 import gevent
 import numpy as np
 import starlette.datastructures
@@ -15,6 +17,7 @@ import torchvision.ops as ops
 from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException, Response, status, \
     Depends
 from pydantic import TypeAdapter
+from sympy.stats import Expectation
 
 from backend.app.services.task_manager import task_manager
 from backend.app.config import logger, loggercrier
@@ -32,7 +35,7 @@ from backend.ml.api.testdatafalse import TEST_PREDICTIONS
 exparation_time_redis = 600 #in seconds, use 240s (3mins) for production
 router = APIRouter()
 
-allowed_types = {'image/jpeg', 'image/png', 'application/pdf', 'text/plain', 'JPEG', 'PNG'}
+allowed_types = {'image/jpeg', 'image/png', 'JPEG', 'PNG'}
 max_size_allowed = 1024 * 1024 *25 #24mb
 
 async def filecheck(f, req, size = None):
@@ -103,7 +106,7 @@ async def image_process(bytes_from_img, ml_inference_log):
         loggercrier.error("error in image_proccess, /predict: ", exc_info=True)
 
 # Onnx model inference, gotten api image has been changed to tensor input format, letterboxed to 512x512 w x h. Def preforms inference on onnx model, NMS pruning and passes the data to further composition.
-async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess, return_for_locust, belongto_name, resized_training_image):
+async def get_predictions(data, original_image, original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, sess, return_for_locust, belongto_name, resized_training_image, req):
     global classname_id
 
     input = sess.get_inputs()[0].name
@@ -143,7 +146,7 @@ async def get_predictions(data, original_image, original_img_w, original_img_h, 
     coeffincies_segmasks = out0arr[:,6:]
     segmasks_prototypes = output1
 
-    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust,belongto_name, resized_training_image)
+    final_composed_images, original_image_to_use = await onnx_to_img(boxes, coeffincies_segmasks, segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust,belongto_name, resized_training_image, req)
     ml_inference_log.append((time.perf_counter() - start_decodeimg) * 1000)
     return final_composed_images, original_image_to_use
 
@@ -176,7 +179,10 @@ async def batchlist_encode(belongto_name: str, objects_found: list, final_compos
                                                details=[details],
                                                prediction=[predictions])
                 metrics = Metrics(handling=None, preprocess_to_tensor=None, inference=None, bbox_and_segmask=None, original_img_encode=None, batchlist=None, encode_img_tag=None, redis=None, whole_runs_time=None)
-                annotations = Annotations(class_id=class_id, stringbuffer_val=final_composed_images[z].annotations, training_img=str(training_image))
+                if z==0:
+                    annotations = Annotations(class_id=class_id, stringbuffer_val=final_composed_images[z].annotations, training_img=str(training_image))
+                else:
+                    annotations = Annotations(class_id=class_id, stringbuffer_val=final_composed_images[z].annotations,training_img=None)
                 constructed = PredictID(predict_id=generated_predictID, jsonresponse=[jsonresponse], metrics=[metrics], annotations=annotations, proxy_metrics=None)
                 batchlist.append(((bbox), (segmask), constructed))
 
@@ -206,17 +212,22 @@ def encode_image(image_tochange, resized_training_img, justto_bytes=None):
             #print("justtobytes for training image", justto_bytes)
             #PIL.Image.Image muutetaan png byteksi
             buffer_touse = BytesIO()
-            #print("imgage_tochange type ", type(image_tochange))
-            image_tochange.save(buffer_touse, format="PNG")
+            try:
+                image_tochange.save(buffer_touse, format="PNG")
+            except Expectation:
+                loggercrier.error("could not save optimized png buffer", exc_info=True)
             changedto_Bytes = buffer_touse.getvalue()
             encoded_orig = base64.b64encode(changedto_Bytes)
             final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded_orig
-            return final_bytes_to_encoded_png# was this, using encoded ones, changedto_Bytes
+            return changedto_Bytes# was this, using encoded ones, changedto_Bytes
         else:
             # PIL.Image.Image muutetaan png byteksi
             #print("justtobytes for training image", justto_bytes)
             buffer_touse = BytesIO()
-            image_tochange.save(buffer_touse, format="PNG")
+            try:
+                image_tochange.save(buffer_touse, format="PNG")
+            except Expectation:
+                loggercrier.error("could not save optimized png buffer", exc_info=True)
             changedto_Bytes = buffer_touse.getvalue()
             encoded_orig = base64.b64encode(changedto_Bytes)
             final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded_orig
@@ -237,25 +248,84 @@ def encode_image_in_batch(image_tochange, samInference = False):
             to_use = []
             #print("all encode batch type", type(image_tochange[0]))
             #print("length of encode batch ", len(image_tochange))
+            image_sizes_kb = []
+            base64_sizes_kb = []
             for b in image_tochange:
                 #print("to use ", len(to_use))
                 if type(b) is tuple:
                     #print("encode image one")
                     #PIL.Image.Image muutetaan png byteksi
-                    buffer_touse = BytesIO()
-                    b[0].save(buffer_touse, format="PNG")
-                    changedto_Bytes = buffer_touse.getvalue()
+                    #buffer_touse = BytesIO()
+                    try:
+                        #logger.info(("buffer to use b[0] ", type(b[0])))
+                        #b[0].save(buffer_touse, format="PNG") #quality=90,
+                        encode_params = [int(cv2.IMWRITE_PNG_COMPRESSION), 3]
+                        #open_cv_image = np.array(b[0])
+                        if b[0].mode == "RGBA":
+                            open_cv_image = cv2.cvtColor(
+                                np.array(b[0]), cv2.COLOR_RGBA2BGRA
+                            )
+                        else:
+                            open_cv_image = cv2.cvtColor(
+                                np.array(b[0].convert("RGB")),
+                                cv2.COLOR_RGB2BGR
+                            )
+                        # Convert RGB (pil) to BGR (cv2)
+                        #open_cv_image = open_cv_image[::, ::, ::-1].copy()
+                        _, buffer_touse = cv2.imencode('.png', open_cv_image, encode_params)
+                        #print("type of buffer_touse1 ", type(buffer_touse))
+                        buffer_touse_bytes = buffer_touse.tobytes()
+                        image_to_use = Image.open(BytesIO(buffer_touse_bytes))
+                        #print("type of buffer_touse_bytes ", type(buffer_touse_bytes))
+                    except Expectation:
+                        loggercrier.error("could not save optimized png buffer", exc_info=True)
+                    changedto_Bytes = buffer_touse_bytes
+                    #print(f'{getsizeof(changedto_Bytes) * 0.001} kB')
+                    image_sizes_kb.append(len(changedto_Bytes) / 1024)
                     encoded = base64.b64encode(changedto_Bytes)
                     final_bytes_to_encoded_png = b'data:image/png;base64,' + encoded
+                    #print(f'{getsizeof(final_bytes_to_encoded_png) * 0.001} kB')
+                    base64_sizes_kb.append(len(final_bytes_to_encoded_png) / 1024)
 
-                    buffer_touse2 = BytesIO()
-                    b[1].save(buffer_touse2, format="PNG")
-                    changedto_Bytes2 = buffer_touse2.getvalue()
+                    #buffer_touse2 = BytesIO()
+                    #logger.info(("buffer to use b[1] ", type(b[1])))
+                    try:
+                        #b[1].save(buffer_touse2, format="PNG") #quality=90,
+                        encode_params = [int(cv2.IMWRITE_PNG_COMPRESSION), 3]
+                        #open_cv_image2 = np.array(b[1])
+                        # Convert RGB (pil) to BGR (cv2)
+                        #open_cv_image2 = open_cv_image2[::, ::, ::-1].copy()
+                        if b[1].mode == "RGBA":
+                            open_cv_image2 = cv2.cvtColor(
+                                np.array(b[1]), cv2.COLOR_RGBA2BGRA
+                            )
+                        else:
+                            open_cv_image2 = cv2.cvtColor(
+                                np.array(b[1].convert("RGB")),
+                                cv2.COLOR_RGB2BGR
+                            )
+                        _, buffer_touse2 = cv2.imencode('.png', open_cv_image2, encode_params)
+                        #print("type of buffer_touse1 ", type(buffer_touse2))
+
+                        buffer_touse_bytes2 = buffer_touse2.tobytes()
+                        image_to_use2 = Image.open(BytesIO(buffer_touse_bytes2))
+                        #print("type of buffer_touse_bytes2 ", type(buffer_touse_bytes2))
+
+                    except Expectation:
+                        loggercrier.error("could not save optimized png buffer", exc_info=True)
+                    changedto_Bytes2 = buffer_touse_bytes2
+                    #print(f'{getsizeof(changedto_Bytes2) * 0.001} kB')
+                    image_sizes_kb.append(len(changedto_Bytes) / 1024)
                     encoded2 = base64.b64encode(changedto_Bytes2)
                     final_bytes_to_encoded_png2 = b'data:image/png;base64,' + encoded2
+                    #print(f'{getsizeof(final_bytes_to_encoded_png2) * 0.001} kB')
                     to_use.append((final_bytes_to_encoded_png, final_bytes_to_encoded_png2))
+                    base64_sizes_kb.append(len(final_bytes_to_encoded_png) / 1024)
                 else:
                     to_use.append(b)
+            # Print totals
+            print(f"\\nTotal PNG size: {sum(image_sizes_kb):.2f} KB")
+            print(f"Total Base64 size: {sum(base64_sizes_kb):.2f} KB")
             return to_use # was this, using encoded ones, changedto_Bytes
         else:
             #print("sam inference")
@@ -290,7 +360,8 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
         # predict_id vertaa kyseisen lähetetyn /predict requestin tietoon, jokaiseen batchlist indexistä jossa on fintraffic kuva
         # ja/tai bbox + segmentmask generoidaan uniikki id (img:{predict_id}:{redisindex}:haluttukuva) jotta monet kuvasta olevat löydöt eivät indexoidu päällekkäin. Kuvat lähetetään Redis databaseen josta ne haetaan myöhemmin omilla id_illä
         b = 0
-        pipe = r.pipeline()
+        pipe = r.pipeline(transaction=False)
+        pipe.set(f"img:{generated_predictID}:original_img", encoded_original, ex=exparation_time_redis)
         for l in batchlist:
             redisindex = uuid.uuid4()
             if type(l) == tuple:
@@ -305,7 +376,6 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             final_bytes_to_resBbox = separated_invidual[b][0]
                             final_bytes_to_resSeg = separated_invidual[b][1]
 
-                            pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
                             results_setted = await pipe.execute()
@@ -318,7 +388,6 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                             final_bytes_to_resSeg = encoded_whole_batch[b][1]
 
                             #print("type of index b ", type(final_bytes_to_resBbox), type(final_bytes_to_resSeg))
-                            pipe.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:bbox", final_bytes_to_resBbox,ex=exparation_time_redis)
                             pipe.set(f"img:{generated_predictID}:{redisindex}:segmask", final_bytes_to_resSeg,ex=exparation_time_redis)
 
@@ -330,13 +399,13 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
                                 #logger.info(("results_setted ", results_setted))
 
                     except redis.exceptions.ResponseError:
-                        loggercrier.error(("error setting data "))
+                        loggercrier.error("error setting data ")
 
                 except Exception:
                     loggercrier.error("error creating index/setting data redis")
 
 
-                l[2].jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
+                l[2].jsonresponse[0].original_img = f"img:{generated_predictID}:original_img"
                 l[2].jsonresponse[0].prediction[0].imageBbox = f"img:{generated_predictID}:{redisindex}:bbox"
                 l[2].jsonresponse[0].prediction[0].imageSeg = f"img:{generated_predictID}:{redisindex}:segmask"
 
@@ -345,7 +414,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
 
             else:
                 # löytöjä ei ollut, laitetaan vain alkuperinen kuva r.set(), sekä json_response_all:iin osoite
-                imgset = await r.set(f"img:{generated_predictID}:{redisindex}:original_img", encoded_original, ex=exparation_time_redis)
+                imgset = await r.set(f"img:{generated_predictID}:original_img", encoded_original, ex=exparation_time_redis)
                 #logger.info(imgset)
                 l.jsonresponse[0].original_img = f"img:{generated_predictID}:{redisindex}:original_img"
                 json_response_all.append(l)
@@ -355,7 +424,7 @@ async def encodeimageto_redis_json(batchlist, encoded_whole_batch,json_response_
         if return_for_locust == True:
             if b >= 1:
                 logger.info(("b is", b))
-                secondsbase = 1.7
+                secondsbase = 1.3
                 total_waiting_base_per_pred = secondsbase * b
                 #logger.info(("total_waiting_base_per_pred", total_waiting_base_per_pred))
                 #gevent.sleep(total_waiting_base_per_pred)
@@ -550,7 +619,7 @@ async def prediction_processing(generated_predictID, do_redis, return_for_locust
             pad = reswith_width_height[6]
 
             final_composed_images, original_image_to_use = await get_predictions(res, original_image,
-                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess, return_for_locust, belongto_name, resized_training_img)
+                                                                                   original_img_w, original_img_h, scale, pad, objects_found, ml_inference_log, onnx_sess, return_for_locust, belongto_name, resized_training_img, req)
 
             start_originalencode = time.perf_counter()
             '''if return_for_locust == False:
@@ -620,12 +689,7 @@ async def prediction_processing(generated_predictID, do_redis, return_for_locust
             if return_for_locust != False:
                 return sendable
             if do_redis == True:
-                #logger.info("trying redis main block for sendable")
-                #logger.info((f"trying to create redis index json_meta{generated_predictID}..."))
                 json_metaset = await r.set(f"json_meta:{generated_predictID}:json", sendable, ex=exparation_time_redis)
-                #logger.info(("setting json meta for ", generated_predictID, "json"))
-                #logger.info((json_metaset, f"json_meta:{generated_predictID}:json"))
-                #logger.info(("redis and prediction_processing finished!", do_redis))
             else:
                 logger.info(("redis.set(json_meta) skipped, was False", do_redis))
 
