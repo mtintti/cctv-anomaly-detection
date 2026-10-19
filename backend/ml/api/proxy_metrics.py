@@ -96,7 +96,7 @@ def _to_python_float(value):
 def calculate_map_per_image(preds, target):
     results = {}
     for iou_type in ("bbox", "segm"):
-        metric = MeanAveragePrecision(box_format="xyxy", iou_type=iou_type, class_metrics=True)
+        metric = MeanAveragePrecision(box_format="xyxy", iou_type=iou_type, class_metrics=False)
         metric.update(preds, target)
         computed = metric.compute()
         results[iou_type] = {key: _to_python_float(computed[key]) for key in MAP_KEYS_TO_KEEP}

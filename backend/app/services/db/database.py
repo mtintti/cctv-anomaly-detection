@@ -1,6 +1,6 @@
 import psycopg
 
-from backend.app.config import logger
+from backend.app.config import logger, loggercrier
 
 
 async def create_item_in_database(pool, id, name, near, municipality, coord1, coord2, date):
@@ -261,22 +261,23 @@ async def gotten_session_users_dataset_content(emailof_user, pool):
 
 async def getting_proxy_metrics_for_groundtruth(pool, image_name):
     logger.info("in db getting_proxy_metrics_for_groundtruth")
+
     logger.info(pool.connection())
     async with pool.connection() as aconn:
         async with aconn.cursor() as curr:
             try:
                 listofall_found_annotations_per_camera = []
                 camera_index_pruned = image_name.find("/", 30)
-                print("camera_index_pruned is", camera_index_pruned)
+                #print("camera_index_pruned is", camera_index_pruned)
                 camera_index_dot_removed = image_name.find(".", camera_index_pruned)
-                print("camera_index_dot_removed is", camera_index_dot_removed)
+                #print("camera_index_dot_removed is", camera_index_dot_removed)
                 camera_searchable_name_pre = image_name[camera_index_pruned + 1:camera_index_dot_removed]
                 camera_searchable_name = camera_searchable_name_pre[0:6]
                 camera_with_suunta_searchable_name = camera_searchable_name_pre[0:8]
                 #kameran id perustuu yhtenäiseen alkuun per lokaatio + loppunumerosarjaan perustuen kameroiden suuntaan,
                 # ex. kolme eri suunnasta kuvaava kameraa samassa lokaatiossa: c1255901, c1255902, c1255904
                 # pruunataan nämä samaan camera_searchable_name tarkoittaen samaa / yhtenäistä lokaatiota: c12559
-                print("camera_searchable_name is", camera_searchable_name, " camera_with_suunta_searchable_name ", camera_with_suunta_searchable_name)
+                #print("camera_searchable_name is", camera_searchable_name, " camera_with_suunta_searchable_name ", camera_with_suunta_searchable_name)
                 try:
                     #haetaan lokaatiota db:sta
                     await curr.execute("SELECT name,near,municipality,latitude,longitude FROM cameras WHERE id = %s",
@@ -304,34 +305,34 @@ async def getting_proxy_metrics_for_groundtruth(pool, image_name):
                             all_found_annotations_per_camera = await curr.fetchall()
                             if len(all_found_annotations_per_camera) > 0:
                                 for per_invidual in all_found_annotations_per_camera:
-                                    logger.info("found a matching camera id")
+                                    #logger.info("found a matching camera id")
                                     print(len(all_found_annotations_per_camera))
-                                    print(per_invidual)
+                                    #print(per_invidual)
                                     #listofall_found_annotations_per_camera.append(all_found_annotations_per_camera)
-                                    print("camera[0] is ", camera[0], " camera searchable name ", camera_searchable_name)
-                                    print("per_invidual is ", per_invidual)
+                                    #print("camera[0] is ", camera[0], " camera searchable name ", camera_searchable_name)
+                                    #print("per_invidual is ", per_invidual)
                                     camera_invidual_angle_index_pruned = per_invidual[1].find("/", 30)
-                                    print("camera_index_pruned is", camera_invidual_angle_index_pruned)
+                                    #print("camera_index_pruned is", camera_invidual_angle_index_pruned)
                                     camera_index_invidual_dot_removed = per_invidual[1].find(".", camera_index_pruned)
-                                    print("camera_index_dot_removed is", camera_index_invidual_dot_removed)
+                                    #print("camera_index_dot_removed is", camera_index_invidual_dot_removed)
                                     camera_per_invidual_suunta_searchable_name = per_invidual[1][camera_invidual_angle_index_pruned + 1:camera_index_invidual_dot_removed]
-                                    print("camera_per_invidual_suunta_searchable_name ", camera_per_invidual_suunta_searchable_name)
+                                    #print("camera_per_invidual_suunta_searchable_name ", camera_per_invidual_suunta_searchable_name)
 
 
                                     listofall_found_annotations_per_camera.append(
                                         (camera[0], camera[5], str(camera_with_suunta_searchable_name) == camera_per_invidual_suunta_searchable_name,
                                          per_invidual))
-                        logger.info("results of all found annotations for image")
-                        print(len(listofall_found_annotations_per_camera))
-                        print(listofall_found_annotations_per_camera)
+                        #logger.info("results of all found annotations for image")
+                        #print(len(listofall_found_annotations_per_camera))
+                        #print(listofall_found_annotations_per_camera)
                         return listofall_found_annotations_per_camera
 
                     except Exception:
-                        logger.info("Found imagename but errored in latlon calculation")
+                        loggercrier.info("Found imagename but errored in latlon calculation", exc_info=True)
                 except Exception:
-                    logger.info("tried to get image names lat and lon coordinates")
+                    loggercrier.error("tried to get image names lat and lon coordinates", exc_info=True)
             except Exception:
-                logger.error("error at start of getting proxy_metrics from db", exc_info=True)
+                loggercrier.error("error at start of getting proxy_metrics from db", exc_info=True)
 
 
 

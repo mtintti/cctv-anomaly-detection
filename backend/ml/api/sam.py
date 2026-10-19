@@ -10,9 +10,10 @@ from PIL import Image
 from io import BytesIO, StringIO
 from pydantic import TypeAdapter
 from starlette.responses import JSONResponse
+from sympy.stats import Expectation
 from ultralytics.models.sam import Predictor as sam
 
-from backend.app.config import logger
+from backend.app.config import logger, loggercrier
 from backend.ml.schema.sam_schema import samResponse, samItems, SamRequest, MetricsSam
 from backend.ml.api.letterboxing import letterbox, ImgSize
 
@@ -111,8 +112,8 @@ def create_mask_yxz_labels(mask_Data, img_basename, classname, annotation_buffer
             buffer.write(" ")
         return buffer
 
-    finally:
-        print("file done")
+    except Expectation:
+        loggercrier.error("could not finish making YOLO ann training data /ml/api/sam/create_mask ",exc_info=True)
 
 # käyttäjän näkemä segmentaatio maski alkuperäisen kuvan päällä, käytetään vain kuvakohtaiseen annonation.txt visuaalisointtin
 def color_coded_overlay_SAMsegmask(mask, colorcoded_class):

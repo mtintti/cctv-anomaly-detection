@@ -15,7 +15,8 @@ import anyio
 
 from backend.app.api.db_routes import proxy_metrics_from_url_image
 from backend.app.config import logger, loggercrier
-from backend.app.dependecies import get_client_connection
+from backend.app.dependecies import get_client_connection, get_pool
+from backend.app.services.db.database import getting_proxy_metrics_for_groundtruth
 from backend.ml.api.proxy_metrics import calculate_proxy_map_metrics
 from backend.ml.api.sam import create_mask_yxz_labels
 from backend.ml.schema.final_imgs import FinalImagesObject
@@ -125,7 +126,7 @@ def color_and_draw_segmentation_bbox(cropped, non_reshaped_training_mask,all_col
     return final_composed_images
 
 
-async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image, final_composed_images,belongto_name, resized_training_image):
+async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image, final_composed_images,belongto_name, resized_training_image, req):
 
     coords = []
     all_colors = []
@@ -168,15 +169,20 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
     # käytetään lähellä olevia tallennettuja predictioneita tekemään confusion matriisi käyttämällä niitä referenssinä olevista luokkanumeroista
     # tarvitaan feikki request objecti hakemaan httpx.AsyncClient connection app.state:sta
     try:
-        async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=2) as client:
+        '''async with httpx.AsyncClient(base_url="http://localhost:8000", timeout=2) as client:
             list_of_matching_near_cams = await client.post(
                 url=f"/auth/proxy_metrics_from_url_image?image_name={belongto_name}")
-            print("received from db")
-            listres = list_of_matching_near_cams.json()
-            print(listres)
-            print("type of ", type(listres))
-            if len(listres) > 0:
-                listof_proxy_camera_results=listres
+            #print("received from db")
+            listres = list_of_matching_near_cams.json()'''
+        real_postgreSQL_connection= await get_pool(request=req)
+        print("real_postgreSQL_connection received ", real_postgreSQL_connection)
+        list_of_matching_near_cams = await getting_proxy_metrics_for_groundtruth(real_postgreSQL_connection, belongto_name)
+        listres = list_of_matching_near_cams
+
+        print(listres)
+        #print("type of ", type(listres))
+        if len(listres) > 0:
+            listof_proxy_camera_results=listres
 
     except Exception:
         loggercrier.error("Exception on getting proxy metrics using client.post()", exc_info=True)
@@ -234,7 +240,7 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
 
     proxy_map_metrics = None
     if listof_proxy_camera_results is not None:
-        print("length of listof_proxy_camera_results", len(listof_proxy_camera_results) )
+        #print("length of listof_proxy_camera_results", len(listof_proxy_camera_results) )
         # boxes: non_reshaped_bbox_coords_as_tensor (xyxy in the 512x512 letterboxed space), NOT `coords`
         # (those are de-letterboxed to the camera image size and would never overlap the stored annotations)
         preds = [dict(
@@ -246,10 +252,10 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
 
         try:
             proxy_map_metrics = calculate_proxy_map_metrics(preds, listof_proxy_camera_results, original_image, resized_training_image)
-            print("all proxy_map_metrics contents are shown next: ")
+            '''print("all proxy_map_metrics contents are shown next: ")
             logger.info(proxy_map_metrics)
             logger.info(("proxy map metrics for ", belongto_name, proxy_map_metrics["bbox"], proxy_map_metrics["segm"]))
-            print("type of proxy metrics ", type(proxy_map_metrics))
+            print("type of proxy metrics ", type(proxy_map_metrics))'''
             final_composed_images[0].proxy_metrics = proxy_map_metrics
         except Exception:
             logger.error("error calculating proxy mAP", exc_info=True)
@@ -257,7 +263,7 @@ async def arrange_full_segmentation_mask(objects_found, finalised_boxes, finalis
     return final_composed_images
 
 
-async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust, belongto_name, resized_training_image):
+async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, original_img_h, original_image, scale, pad, objects_found, return_for_locust, belongto_name, resized_training_image, req):
 
     indx = 0
     conf_to_pass = 0.10
@@ -302,7 +308,7 @@ async def onnx_to_img(boxes, coeff_masks,segmasks_prototypes, original_img_w, or
         '''if return_for_locust != True:
             final_composed_images = await asyncio.to_thread(arrange_full_segmentation_mask, objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images)
         else:'''
-        final_composed_images = await gevent.get_hub().threadpool.apply(arrange_full_segmentation_mask, args=(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images, belongto_name, resized_training_image))
+        final_composed_images = await gevent.get_hub().threadpool.apply(arrange_full_segmentation_mask, args=(objects_found, finalised_boxes, finalised_coeffs, segmasks_prototypes, original_image_RGBA, final_composed_images, belongto_name, resized_training_image, req))
         #print(" ")
 
         #return overlay_seg, overlay_bbox, blended_together, original_image_RGBA
